@@ -30,7 +30,7 @@
 
   onAuthStateChanged(auth, user => {
     if (!user) {
-      window.location.replace('/sistema/index.html');
+      window.location.replace('index.html');
     } else {
       document.documentElement.style.visibility = 'visible';
       const el = document.getElementById('auth-user-email');
@@ -40,7 +40,7 @@
 
   window.__doLogout = async function() {
     await signOut(auth);
-    window.location.replace('/sistema/index.html');
+    window.location.replace('index.html');
   };
 </script>
 
