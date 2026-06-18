@@ -30,7 +30,7 @@
   onAuthStateChanged(auth, user => {
     if (!user) {
       // Não logado → redireciona para login
-      window.location.replace('index.html');
+      window.location.replace('/sistema-onboarding/index.html');
     } else {
       // Logado → mostra o painel e exibe nome do usuário
       document.documentElement.style.visibility = 'visible';
@@ -42,7 +42,7 @@
   // Botão de logout disponível globalmente
   window.__doLogout = async function() {
     await signOut(auth);
-    window.location.replace('index.html');
+    window.location.replace('/sistema-onboarding/index.html');
   };
 </script>
 <title>Controle de Procurações — Ágil Aduaneira</title>
@@ -160,7 +160,7 @@
   onAuthStateChanged(auth, user => {
     if (!user) {
       // Não logado → redireciona para login
-      window.location.replace('index.html');
+      window.location.replace('/sistema-onboarding/index.html');
     } else {
       // Logado → mostra o painel e exibe o e-mail
       document.documentElement.style.visibility = 'visible';
@@ -172,7 +172,7 @@
   // Logout disponível globalmente
   window.__doLogout = async function() {
     await signOut(auth);
-    window.location.replace('index.html');
+    window.location.replace('/sistema-onboarding/index.html');
   };
 </script>
 </head>
