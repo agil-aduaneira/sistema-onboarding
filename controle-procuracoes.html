@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <!-- ============================================================
-     🔒 PROTEÇÃO DE ROTA — Firebase Auth
-     Se o usuário não estiver logado, redireciona para login.html
+     🔒 PROTEÇÃO DE ROTA — Firebase Auth + Storage
+     Se o usuário não estiver logado, redireciona para login.
+     Storage é usado para anexar PDFs de procuração (botão 📎).
 ============================================================ -->
 <script type="module">
   import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyCeUJy4WhbTS80ElGhAbBGuw7oHUV3Bo0o",
@@ -24,6 +26,21 @@
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
 
+  // Tenta inicializar o Storage. Se o bucket ainda não estiver ativado no
+  // console do Firebase, isso falha silenciosamente e o sistema cai no
+  // fallback de link manual (ver função uploadPdf mais abaixo).
+  let storageInstance = null;
+  try {
+    storageInstance = getStorage(app);
+  } catch (e) {
+    console.warn('Firebase Storage não inicializado:', e.message);
+  }
+  // Expostos globalmente para as funções do <script> principal usarem
+  window.storage       = storageInstance;
+  window.storageRef     = storageRef;
+  window.uploadBytes    = uploadBytes;
+  window.getDownloadURL = getDownloadURL;
+
   // Aguarda verificação de sessão — oculta o conteúdo até confirmar login
   document.documentElement.style.visibility = 'hidden';
 
@@ -34,7 +51,7 @@
     } else {
       // Logado → mostra o painel e exibe nome do usuário
       document.documentElement.style.visibility = 'visible';
-      const el = document.getElementById('user-logado');
+      const el = document.getElementById('auth-user-email');
       if (el) el.textContent = user.email;
     }
   });
@@ -77,19 +94,33 @@
   .filters input:focus { outline: none; border-color: #185FA5; box-shadow: 0 0 0 3px rgba(24,95,165,.1); }
   .filters select { font-size: 13px; padding: 8px 12px; border: 1px solid #dde1e8; border-radius: 8px; background: #fff; color: #333; cursor: pointer; }
 
-  /* Tabela */
-  .table-wrap { background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow: hidden; overflow-x: auto; }
+  /* Tabela — com sticky header (equivalente ao "Congelar linha superior" do Excel) */
+  .table-wrap {
+    background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    overflow-x: auto;
+    max-height: calc(100vh - 340px);
+    overflow-y: auto;
+  }
   table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
   thead tr { background: #f7f8fa; }
-  th { padding: 9px 11px; font-weight: 600; font-size: 11px; color: #666; text-align: left; white-space: nowrap; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: .04em; }
+  th {
+    padding: 9px 11px; font-weight: 600; font-size: 11px; color: #666;
+    text-align: left; white-space: nowrap; border-bottom: 2px solid #dde1e8;
+    text-transform: uppercase; letter-spacing: .04em;
+    position: sticky; top: 0; z-index: 10;
+    background: #f7f8fa;
+    box-shadow: 0 2px 0 #dde1e8;
+  }
   td { padding: 8px 11px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
 
-  /* Alertas por linha */
+  /* Alertas por linha — VERMELHO só quando VENCIDA */
   tr.row-vencida td { background: #FFF0F0 !important; }
   tr.row-vencida:hover td { background: #FFE4E4 !important; }
+  /* LARANJA quando vence em ≤ 30 dias (crítico mas não vencido) */
   tr.row-critica td { background: #FFF5EC !important; }
   tr.row-critica:hover td { background: #FFEEDE !important; }
+  /* AMARELO quando deve solicitar renovação em breve */
   tr.row-alerta td { background: #FFFBEC !important; }
   tr.row-alerta:hover td { background: #FFF6D6 !important; }
   tr.row-ok:hover td { background: #f9f9fb; }
@@ -126,6 +157,69 @@
   .empty { text-align: center; padding: 3rem; color: #aaa; font-size: 14px; }
   .date-strong { font-weight: 600; white-space: nowrap; }
   .date-normal { white-space: nowrap; }
+  .date-edit {
+    border: 1px solid transparent;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+    color: inherit;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 124px;
+  }
+  .date-edit:hover { border-color: #dde1e8; background: #fff; }
+  .date-edit:focus { outline: none; border-color: #185FA5; background: #fff; box-shadow: 0 0 0 3px rgba(24,95,165,.12); cursor: text; }
+  .date-edit-strong { font-weight: 600; }
+  .text-edit {
+    border: 1px solid transparent;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+    color: inherit;
+    padding: 4px 6px;
+    border-radius: 6px;
+    width: 90px;
+  }
+  .text-edit-wide { width: 150px; }
+  .text-edit:hover { border-color: #dde1e8; background: #fff; }
+  .text-edit:focus { outline: none; border-color: #185FA5; background: #fff; box-shadow: 0 0 0 3px rgba(24,95,165,.12); }
+  .pdf-cell { display: flex; align-items: center; gap: 4px; }
+  .pdf-link {
+    font-size: 11px; color: #185FA5; text-decoration: none;
+    padding: 3px 8px; border-radius: 99px; background: #E6F1FB;
+    white-space: nowrap;
+  }
+  .pdf-link:hover { background: #d2e6f8; }
+  .pdf-empty { font-size: 11px; color: #bbb; }
+  .pdf-upload-btn {
+    border: 1px solid #dde1e8; background: #fff; border-radius: 6px;
+    width: 24px; height: 24px; cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .pdf-upload-btn:hover { background: #E6F1FB; border-color: #185FA5; }
+
+  /* Select dos despachantes (Norton / Sidney) */
+  .desp-select {
+    border: 1px solid transparent;
+    background: transparent;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 4px;
+    border-radius: 5px;
+    cursor: pointer;
+    width: 76px;
+    color: inherit;
+  }
+  .desp-select:hover { border-color: #dde1e8; background: #fff; }
+  .desp-select:focus { outline: none; border-color: #185FA5; background: #fff; box-shadow: 0 0 0 3px rgba(24,95,165,.12); }
+  .desp-select.d-ok-bg   { background: #EAF3DE !important; color: #2E7D32 !important; }
+  .desp-select.d-venc-bg { background: #FCEBEB !important; color: #A32D2D !important; }
+  .desp-select.d-nv-bg   { background: #FAEEDA !important; color: #854F0B !important; }
+  .desp-select.d-can-bg  { background: #F4C0D1 !important; color: #721B38 !important; }
+  .desp-select.d-nc-bg   { background: #f0f0f0 !important; color: #aaa !important; }
 
   @media (max-width: 700px) {
     .stats { grid-template-columns: repeat(2,1fr); }
@@ -133,48 +227,6 @@
   }
 </style>
 
-<!-- Firebase Auth — Proteção de rota -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
-  // ============================================================
-  // 🔧 MESMOS DADOS DO SEU firebase no login.html
-  // ============================================================
-  const firebaseConfig = {
-    apiKey:            "AIzaSyCeUJy4WhbTS80ElGhAbBGuw7oHUV3Bo0o",
-    authDomain:        "sistema-onboarding.firebaseapp.com",
-    projectId:         "sistema-onboarding",
-    storageBucket:     "sistema-onboarding.firebasestorage.app",
-    messagingSenderId: "961981483566",
-    appId:             "1:961981483566:web:4cbf13839be89cc50dedbf"
-  };
-  // ============================================================
-
-  const app  = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-
-  // Enquanto verifica o auth, esconde o conteúdo
-  document.documentElement.style.visibility = 'hidden';
-
-  onAuthStateChanged(auth, user => {
-    if (!user) {
-      // Não logado → redireciona para login
-      window.location.replace('/sistema-onboarding/index.html');
-    } else {
-      // Logado → mostra o painel e exibe o e-mail
-      document.documentElement.style.visibility = 'visible';
-      const el = document.getElementById('auth-user-email');
-      if (el) el.textContent = user.email;
-    }
-  });
-
-  // Logout disponível globalmente
-  window.__doLogout = async function() {
-    await signOut(auth);
-    window.location.replace('/sistema-onboarding/index.html');
-  };
-</script>
 </head>
 <body>
 
@@ -192,6 +244,15 @@
     <span>Controle de Procurações</span>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
+    <a href="/sistema-onboarding/index.html" style="
+      background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+      color:rgba(255,255,255,.8); font-size:11px; padding:3px 10px;
+      border-radius:6px; cursor:pointer; font-family:inherit;
+      text-decoration:none; transition:background .15s;
+    " onmouseover="this.style.background='rgba(255,255,255,.18)'"
+       onmouseout="this.style.background='rgba(255,255,255,.1)'">
+      ☰ Menu
+    </a>
     <span id="auth-user-email" style="color:rgba(255,255,255,.6);"></span>
     <button onclick="__doLogout()" style="
       background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
@@ -223,15 +284,6 @@
         <option value="alerta">Em alerta (≤ 30 dias)</option>
         <option value="vencidas">Vencidas</option>
       </select>
-      <div style="display:flex;align-items:center;gap:8px;padding-left:10px;border-left:1px solid #e0e3e8;">
-        <span style="font-size:12px;color:#888;">👤 <span id="user-logado"></span></span>
-        <button onclick="__doLogout()"
-          style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid #dde1e8;background:none;color:#888;cursor:pointer;font-family:inherit;"
-          onmouseover="this.style.borderColor='#C0392B';this.style.color='#C0392B'"
-          onmouseout="this.style.borderColor='#dde1e8';this.style.color='#888'">
-          Sair
-        </button>
-      </div>
     </div>
   </div>
 
@@ -254,6 +306,12 @@
     <div class="leg-item" style="margin-left:auto;font-size:11px;color:#aaa;" id="count-label"></div>
   </div>
 
+  <!-- Aviso de edição -->
+  <div style="display:flex;align-items:center;gap:8px;background:#E6F1FB;border-radius:8px;padding:8px 14px;margin-bottom:1rem;font-size:11.5px;color:#0D3B6E;">
+    ✏️ <strong>Datas editáveis:</strong> clique em qualquer data (Outorga, Val. RFB, Renov.) para alterá-la. As alterações recalculam os alertas automaticamente, mas <strong>não são salvas ao recarregar a página</strong> — isso exigirá conectar o sistema ao Firestore.
+  </div>
+
+
   <!-- Filtros -->
   <div class="filters">
     <input type="text" id="search" placeholder="🔍  Buscar importador ou CNPJ…" oninput="applyFilters()">
@@ -273,8 +331,13 @@
           <th>Outorga</th>
           <th>Val. RFB</th>
           <th>Renov. até</th>
+          <th>Radar</th>
+          <th>ECAC</th>
+          <th>Status</th>
           <th>Tipo</th>
-          <th title="Norton · Sidney · Paulo · Lucas · Carlos">N · S · P · L · C</th>
+          <th title="Norton · Sidney">N · S</th>
+          <th>E-mail</th>
+          <th>PDF</th>
           <th>Observação</th>
           <th></th>
         </tr>
@@ -299,23 +362,148 @@ function fmt(d) {
   if (!d) return '—';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
+// Converte Date -> serial Excel (inverso de excelDate)
+function toExcelSerial(date) {
+  const utcMidnight = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round(utcMidnight / 86400000) + 25569;
+}
+// Converte Date -> string yyyy-mm-dd para preencher <input type="date">
+function toInputDate(d) {
+  if (!d) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+// Atualiza um campo de data (outorga, validRfb, renovacao) de um registro pelo CNPJ
+function updateDate(cnpj, field, inputEl) {
+  const valor = inputEl.value; // yyyy-mm-dd ou vazio
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  if (!valor) {
+    row[field] = null;
+  } else {
+    const [yyyy, mm, dd] = valor.split('-').map(Number);
+    const localDate = new Date(yyyy, mm - 1, dd);
+    row[field] = toExcelSerial(localDate);
+  }
+  applyFilters();
+}
+
+// Atualiza campos de texto simples (emails, obs) sem precisar re-renderizar tudo
+function updateField(cnpj, field, inputEl) {
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  row[field] = inputEl.value;
+}
+
+// Atualiza campos de DATA (radar, ecac) — salva como serial Excel
+function updateDateField(cnpj, field, inputEl) {
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  const valor = inputEl.value; // yyyy-mm-dd ou vazio
+  if (!valor) {
+    row[field] = '';
+  } else {
+    const [yyyy, mm, dd] = valor.split('-').map(Number);
+    const localDate = new Date(yyyy, mm - 1, dd);
+    row[field] = toExcelSerial(localDate);
+  }
+}
+
+// Badge de status textual (coluna STATUS da planilha original)
+function statusBadge(row) {
+  const u = urgency(row);
+  if (u === 'vencida') return '<span class="badge badge-vencida">PROCURAÇÃO VENCIDA</span>';
+  if (u === 'critica') return '<span class="badge badge-critica">ENVIAR E-MAIL DE RENOVAÇÃO</span>';
+  if (u === 'alerta')  return '<span class="badge badge-alerta">ENVIAR E-MAIL DE RENOVAÇÃO</span>';
+  return '<span class="badge badge-ok">NO PRAZO</span>';
+}
+
+// Célula de PDF: botão de upload (Firebase Storage) + campo de link manual como alternativa
+function pdfCell(row, rowKey) {
+  const temArquivo = !!row.pdfLink;
+  const verBtn = temArquivo
+    ? `<a href="${row.pdfLink}" target="_blank" class="pdf-link" title="Abrir PDF">📄 Ver</a>`
+    : `<span class="pdf-empty">—</span>`;
+  return `
+    <div class="pdf-cell">
+      ${verBtn}
+      <button class="pdf-upload-btn" title="Anexar PDF (Firebase Storage)" onclick="document.getElementById('file-${rowKey}').click()">📎</button>
+      <input type="file" id="file-${rowKey}" accept="application/pdf" style="display:none" onchange="uploadPdf('${row.cnpj}', this)">
+    </div>
+  `;
+}
+
+// Upload do PDF para Firebase Storage (requer Storage ativado no console do Firebase)
+async function uploadPdf(cnpj, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+
+  if (typeof storage === 'undefined' || !storage) {
+    // Storage não configurado ainda — fallback: pedir link manual
+    const link = prompt('Firebase Storage ainda não está ativo neste sistema.\n\nCole aqui o link da pasta de rede ou do arquivo (ex: link do SharePoint/OneDrive):', row.pdfLink || '');
+    if (link !== null) {
+      row.pdfLink = link.trim();
+      applyFilters();
+    }
+    return;
+  }
+
+  try {
+    const path = `procuracoes/${cnpj.replace(/[^0-9]/g,'')}_${Date.now()}.pdf`;
+    const fileRef = storageRef(storage, path);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    row.pdfLink = url;
+    applyFilters();
+  } catch (err) {
+    alert('Erro ao enviar o PDF: ' + err.message);
+  }
+}
+
 function daysLeft(d) {
   if (!d) return null;
   return Math.floor((d - TODAY) / 86400000);
 }
+
+// REGRA DE COR:
+// - VERMELHO: procuração já VENCIDA (data passada ou status contém "VENCIDA")
+// - LARANJA:  procuração vence em ≤ 30 dias (mas ainda vigente)
+// - AMARELO:  data de renovação ultrapassada ou ≤ 30 dias (deve solicitar renovação)
+// - OK:       tudo em dia
 function urgency(row) {
-  const s = (row.status || '').toUpperCase();
-  if (s.includes('VENCIDA') || s.includes('VENCID')) return 'vencida';
   const vRfb = excelDate(row.validRfb);
-  if (!vRfb) return 'sem-data';
-  const dR = daysLeft(vRfb);
-  if (dR < 0) return 'vencida';
-  if (dR <= 30) return 'critica';
+  // Verifica se a procuração já está vencida pela data
+  if (vRfb) {
+    const dR = daysLeft(vRfb);
+    if (dR < 0) return 'vencida'; // data de validade já passou → VERMELHO
+    if (dR <= 30) return 'critica'; // vence em ≤ 30 dias → LARANJA
+  }
+  // Se não tem data de validade mas o status textual diz vencida
+  const s = (row.status || '').toUpperCase();
+  if (!vRfb && (s.includes('VENCIDA') || s.includes('VENCIDO'))) return 'vencida';
+
+  // Verifica se deve solicitar renovação (baseado na coluna SOLICITAR RENOVAÇÃO)
   const vRen = excelDate(row.renovacao);
-  const dRen = vRen ? daysLeft(vRen) : null;
-  if (dRen !== null && dRen <= 0) return 'alerta';
-  if (dRen !== null && dRen <= 30) return 'alerta';
+  if (vRen) {
+    const dRen = daysLeft(vRen);
+    if (dRen <= 30) return 'alerta'; // data de renovação chegou → AMARELO
+  }
   return 'ok';
+}
+
+// Converte valor de RADAR/ECAC (pode ser serial Excel ou string de data) para Date
+function parseRadarEcac(val) {
+  if (!val || val === '' || val === '—' || val === '-') return null;
+  const n = Number(val);
+  if (!isNaN(n) && n > 30000) return excelDate(n); // serial Excel
+  // Tenta parsear como data ISO ou BR
+  const d = new Date(val);
+  if (!isNaN(d.getTime())) return d;
+  return null;
 }
 const URG_ORDER = { vencida: 0, critica: 1, 'sem-data': 2, alerta: 3, ok: 4 };
 
@@ -330,13 +518,30 @@ function alertaBadge(row) {
   return '';
 }
 
-function despBadge(val, name) {
+// Opções disponíveis para despachantes
+const DESP_OPCOES = ['OK', 'X', 'VENCIDO', 'NÃO VALIDADO', 'CANCELADO', 'SEM CADASTRO', 'RECUSADO', ''];
+
+function despSelectClass(val) {
   const v = (val || '').toString().toUpperCase().trim();
-  if (v === 'OK' || v === 'X')   return `<span class="desp d-ok"  title="${name}">${v==='X'?'✓':'OK'}</span>`;
-  if (v === 'VENCIDO')            return `<span class="desp d-venc" title="${name}">V</span>`;
-  if (v === 'NÃO VALIDADO' || v === 'NAO VALIDADO') return `<span class="desp d-nv" title="${name}">NV</span>`;
-  if (v === 'CANCELADO')          return `<span class="desp d-can" title="${name}">CA</span>`;
-  return `<span class="desp d-nc" title="${name}">—</span>`;
+  if (v === 'OK' || v === 'X')               return 'd-ok-bg';
+  if (v === 'VENCIDO')                        return 'd-venc-bg';
+  if (v === 'NÃO VALIDADO' || v === 'NAO VALIDADO') return 'd-nv-bg';
+  if (v === 'CANCELADO' || v === 'RECUSADO') return 'd-can-bg';
+  return 'd-nc-bg';
+}
+
+function despSelect(cnpj, field, val, label) {
+  const cls = despSelectClass(val);
+  const opts = DESP_OPCOES.map(o => `<option value="${o}" ${o === (val||'') ? 'selected' : ''}>${o || '—'}</option>`).join('');
+  return `<select class="desp-select ${cls}" title="${label}" onchange="updateDespachante('${cnpj}','${field}',this)">${opts}</select>`;
+}
+
+function updateDespachante(cnpj, field, selectEl) {
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  row[field] = selectEl.value;
+  // Atualiza só a classe visual sem re-renderizar tudo
+  selectEl.className = 'desp-select ' + despSelectClass(selectEl.value);
 }
 
 function rowClass(row) {
@@ -370,85 +575,85 @@ Equipe Ágil Soluções Aduaneiras
 // DADOS — CONTROLE (aba principal)
 // ============================================================
 const RAW = [
-  {importador:"AERIS INDUSTRIA E COMERCIO DE EQUIPAMENTOS",cnpj:"12.528.708/0001-07",outorga:45495,validRfb:45860,renovacao:45830,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:""},
-  {importador:"AMS BERNARDO-ME",cnpj:"08.648.158/0001-84",outorga:45377,validRfb:46472,renovacao:46442,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:""},
-  {importador:"AMCOR DO NORDESTE",cnpj:"12.350.811/0001-00",outorga:45877,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:""},
-  {importador:"ALMEIDA COMERCIO DISTRIBUIDOR DE MATERIAIS DE CONSTRUCAO",cnpj:"35.419.548/0005-89",outorga:45307,validRfb:null,renovacao:46008,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"ozeas@atriacomex.com.br"},
-  {importador:"AQF ENGENHARIA S/A",cnpj:"46.431.778/0001-56",outorga:45307,validRfb:45673,renovacao:45643,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:""},
-  {importador:"AGUIAR DISTRIBUIDORA DE PNEUS E PECAS EIRELI",cnpj:"07.211.405/0001-18",outorga:45267,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"",emails:"gleydsonteles@hotmail.com; TROPICAL-PNEUS@HOTMAIL.COM"},
-  {importador:"AGRICOLA FAMOSA S.A (0002-93)",cnpj:"00.474.300/0002-93",outorga:45744,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"afilho@agrfamosa.com.br"},
-  {importador:"AGRICOLA FAMOSA S.A (0018-50)",cnpj:"00.474.300/0018-50",outorga:46028,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"AGRICOLA FAMOSA S.A (0021-56)",cnpj:"00.474.300/0021-56",outorga:45631,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"afilho@agrfamosa.com.br"},
-  {importador:"AVINE COMERCIAL E AVICOLA DO NORDESTE LTDA",cnpj:"41.434.556/0004-16",outorga:45295,validRfb:45657,renovacao:45627,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"compras6@avinealimentos.com.br; igornunes@avine.com.br"},
-  {importador:"BARRETOS DISTRIBUIDORA DE ALIMENTOS LTDA",cnpj:"11.516.329/0001-26",outorga:44832,validRfb:45170,renovacao:45140,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"12/12 - SOLICITADO RENOVAÇÃO",emails:""},
-  {importador:"BDA SALVADOR DISTRIBUIDORA DE ALIMENTOS LTDA",cnpj:"24.723.601/0001-90",outorga:45272,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"BEACH BIKE DIST. DE PEÇAS DE MOTO E BICICLETAS EIRELI",cnpj:"02.541.582/0001-49",outorga:45293,validRfb:45659,renovacao:45629,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"marcosrogerioimport@hotmail.com"},
-  {importador:"B. HENRIQUE DE OLIVEIRA LEITE SANTOS",cnpj:"41.578.872/0001-19",outorga:null,validRfb:null,renovacao:46282,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"",emails:""},
-  {importador:"BRUNO CARDOSO DA SILVA ME",cnpj:"28.536.609/0001-07",outorga:46129,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"22/04/2027 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"CARMEHIL SOLUÇÕES INDUSTRIAIS EIRELI ME",cnpj:"05.478.220/0001-49",outorga:46007,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2023 COBRADO NOVAMENTE",emails:"elvis.silva@carmehil.com.br; flavio@carmehil.com.br"},
-  {importador:"CARMEHIL COMERCIAL ELETRICA LTDA (0001-34)",cnpj:"02.403.486/0001-34",outorga:46007,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:"elvis.silva@carmehil.com.br; flavio@carmehil.com.br"},
-  {importador:"CARAJAS MATERIAL DE CONSTRUCAO LTDA",cnpj:"03.656.804/0007-27",outorga:45622,validRfb:47483,renovacao:47453,status:"NO PRAZO",tipo:"FÍSICA",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"",emails:""},
-  {importador:"COMPANNY DO BRASIL IMPORTACAO E EXPORTACAO (0001-61)",cnpj:"07.965.203/0001-61",outorga:46063,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"01/04/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"COMPANNY DO BRASIL IMPORTACAO E EXPORTACAO (0002-42)",cnpj:"07.965.203/0002-42",outorga:46113,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"01/04/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"DC LOGISTICS BRASIL LTDA",cnpj:"74.182.593/0001-90",outorga:45258,validRfb:46733,renovacao:46703,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"OK",obs:"",emails:""},
-  {importador:"DELOS COMERCIO DE EQUIPAMENTOS ELETRICOS LTDA",cnpj:"34.190.356/0001-57",outorga:45197,validRfb:46624,renovacao:46594,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"NÃO VALIDADO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"NÃO VALIDADO",carlos:"",obs:"",emails:""},
-  {importador:"DSV AIR & SEA BRASIL LTDA.",cnpj:"49.728.108/0001-94",outorga:45805,validRfb:46142,renovacao:46112,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"28/05 - RECEBIDO NOVA PROCURAÇÃO",emails:"luiz.oliveira@dsv.com; leogustavo.santos@dsv.com"},
-  {importador:"EBBA – EMPRESA BRASILEIRA DE BEBIDAS E ALIMENTOS (MATRIZ/SP)",cnpj:"07.604.556/0001-36",outorga:46031,validRfb:46396,renovacao:46366,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"ELETRA INDUSTRIA E COMERCIO DE MEDIDORES (0001-15)",cnpj:"12.115.480/0001-15",outorga:46011,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"23/12 RECEBIDO A NOVA PROCURAÇÃO",emails:"comex@eletraenergy.com; juciely.oliveira@eletraenergy.com"},
-  {importador:"ELETRA INDUSTRIA E COMERCIO DE MEDIDORES (0002-04)",cnpj:"12.115.480/0002-04",outorga:46011,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"23/12 RECEBIDO A NOVA PROCURAÇÃO",emails:"comex@eletraenergy.com"},
-  {importador:"FAMOSA DISTRIBUICAO LTDA",cnpj:"28.132.974/0002-29",outorga:44914,validRfb:45291,renovacao:45261,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"19/12 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"FAZAGUA INDUSTRIA E COMERCIO DE BOMBAS LTDA",cnpj:"23.744.618/0001-61",outorga:46175,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"",emails:""},
-  {importador:"FARMACE INDÚSTRIA QUÍMICO FARMACÊUTICA CEARENSE LTDA.",cnpj:"06.628.333/0001-46",outorga:46050,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"29/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"FRESENIUS KABI BRASIL LTDA (0001-04)",cnpj:"49.324.221/0001-04",outorga:45889,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"27/08/2024 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"FRESENIUS KABI BRASIL LTDA (0008-80)",cnpj:"49.324.221/0008-80",outorga:45889,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"27/08/2024 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"FERTILIZANTES HERINGER S.A.",cnpj:"22.266.175/0001-88",outorga:45273,validRfb:45639,renovacao:45609,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:""},
-  {importador:"GARRIDO E GUZMAN COMERCIAL DE ACESSORIOS (0001-84)",cnpj:"07.190.194/0001-84",outorga:45846,validRfb:45846,renovacao:45816,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"GARRIDO E GUZMAN COMERCIAL DE ACESSORIOS (0003-46)",cnpj:"07.190.194/0003-46",outorga:45861,validRfb:47483,renovacao:47453,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"GEOSCAN GEOLOGIA E GEOFÍSICA LTDA",cnpj:"23.731.971/0001-07",outorga:45792,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:""},
-  {importador:"GRANDE MOINHO CEARENSE S/A - PI",cnpj:"07.199.805/0002-36",outorga:46006,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"VENCIDO",sidney:"CANCELADO",paulo:"OK",lucas:"VENCIDO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"fpires@moinhocearense.com.br"},
-  {importador:"GRANDE MOINHO CEARENSE S/A - CE",cnpj:"07.199.805/0001-55",outorga:46006,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"VENCIDO",lucas:"VENCIDO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"fpires@moinhocearense.com.br"},
-  {importador:"HIBRAS COMÉRCIO E LOGÍSTICA LTDA",cnpj:"22.023.611/0001-98",outorga:45953,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"INDÚSTRIAS REUNIDAS RENDA S/A",cnpj:"11.445.160/0001-60",outorga:44804,validRfb:45657,renovacao:45627,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:""},
-  {importador:"JH VIEIRA MAGALHAES LTDA",cnpj:"34.513.439/0001-30",outorga:46035,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"05/01/2026 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"LF IMPORTADORA LTDA.",cnpj:"47.388.322/0001-13",outorga:44902,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:""},
-  {importador:"LF2 IMPORTADORA LTDA.",cnpj:"48.150.280/0001-40",outorga:44902,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:""},
-  {importador:"MOTO PECAS DUAS RODAS LTDA",cnpj:"06.027.168/0001-77",outorga:45944,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"",emails:""},
-  {importador:"NORDESTE CORDIS LTDA",cnpj:"04.657.412/0001-50",outorga:46147,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"OK ENERGY IMPORTAÇÃO E EXPORTAÇÃO LTDA",cnpj:"27.568.657/0001-06",outorga:46132,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"X",obs:"",emails:""},
-  {importador:"PAPARIPABA AGROINDUSTRIAL LTDA",cnpj:"05.492.380/0001-42",outorga:46020,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"29/12 - NOVA PROCURAÇÃO RECEBIDA",emails:"exportacao@paragro.com.br"},
-  {importador:"PINDSTRUP BRASIL COMERCIO DE SUBSTRATOS",cnpj:"19.479.029/0001-26",outorga:46088,validRfb:46477,renovacao:46447,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"OK",sidney:"OK",paulo:"OK",lucas:"CANCELADO",carlos:"",obs:"03/03/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"cjb@pindstrup.com"},
-  {importador:"PRIME SEAFOOD LTDA (0001-02)",cnpj:"15.452.593/0001-02",outorga:45819,validRfb:46549,renovacao:46519,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"11/06/2025 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"PRIME SEAFOOD LTDA (0011-76)",cnpj:"15.452.593/0011-76",outorga:45819,validRfb:46549,renovacao:46519,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"VENCIDO",lucas:"VENCIDO",carlos:"",obs:"11/06/2025 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"SAMARIA RAÇÕES E NUTRIÇÃO ANIMAL LTDA",cnpj:"32.972.772/0001-81",outorga:45351,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"sleal@samariaracoes.com.br; msousa@samariaracoes.com.br"},
-  {importador:"SAS DO BRASIL SOLUÇÕES AGROSUSTENTAVEIS",cnpj:"15.260.104/0001-02",outorga:45287,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"rogerio.anastacio@sas-agri.com"},
-  {importador:"ST INDUSTRIA DE EMBALAGENS E MATERIAL PLASTICOS LTDA",cnpj:"34.403.932/0001-05",outorga:45637,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"financeiro@stembalagem.com.br"},
-  {importador:"TOPBIO - INSUMOS BIOLOGICOS INDUSTRIA E COMERCIO LTDA",cnpj:"22.296.945/0001-35",outorga:46028,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"06/01 - RECEBIDO NOVA PROCURAÇÃO",emails:"afilho@agrfamosa.com.br"},
-  {importador:"TOPPLANT COMERCIO DE MUDAS LTDA (0001-90)",cnpj:"04.988.852/0001-90",outorga:46035,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"NÃO VALIDADO",carlos:"",obs:"",emails:""},
-  {importador:"TOPPLANT COMERCIO DE MUDAS LTDA (0002-70)",cnpj:"04.988.852/0002-70",outorga:44552,validRfb:44926,renovacao:44896,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:""},
-  {importador:"TRUST TRADE IMPORTACAO E EXPORTACAO EIRELI",cnpj:"24.110.284/0002-18",outorga:44399,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"TRADE",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"USIBRAS USINA BRASILEIRA DE OLEOS E CASTRANHAS (0003-89)",cnpj:"08.395.782/0003-89",outorga:46020,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"29/12 - RECEBIDO NOVA PROCURAÇÃO",emails:""},
-  {importador:"USIBRAS USINA BRASILEIRA DE OLEOS E CASTRANHAS (0001-17)",cnpj:"08.395.782/0001-17",outorga:45637,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:""},
-  {importador:"VERDE BRASIL IMPORTAÇÃO E EXPORTAÇÃO DE SEMENTES (0001-24)",cnpj:"37.610.513/0001-24",outorga:46028,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"marcia.lima@verdebrasil.net.br"},
-  {importador:"VERDE BRASIL IMPORTAÇÃO E EXPORTAÇÃO DE SEMENTES (0002-05)",cnpj:"37.610.513/0002-05",outorga:46028,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"marcia.lima@verdebrasil.net.br"},
-  {importador:"VESTAS DO BRASIL ENERGIA EÓLICA LTDA (0002-32)",cnpj:"04.919.351/0002-32",outorga:44796,validRfb:45291,renovacao:45261,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"OK",lucas:"SEM CADASTRO",carlos:"",obs:"EMAIL DE RENOVAÇÃO ENVIADO EM 05/11/2021",emails:""},
-  {importador:"WARTSILA BRASIL LTDA (0001-52)",cnpj:"36.176.600/0001-52",outorga:45554,validRfb:45919,renovacao:45889,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:""},
-  {importador:"WINNING TRADING S.A",cnpj:"13.352.623/0001-75",outorga:45040,validRfb:46136,renovacao:46106,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"WORLD FREIGHT",cnpj:"71.908.859/0001-41",outorga:45030,validRfb:45396,renovacao:45366,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
+  {importador:"AERIS INDUSTRIA E COMERCIO DE EQUIPAMENTOS",cnpj:"12.528.708/0001-07",outorga:45495,validRfb:45860,renovacao:45830,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AMS BERNARDO-ME",cnpj:"08.648.158/0001-84",outorga:45377,validRfb:46472,renovacao:46442,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AMCOR DO NORDESTE",cnpj:"12.350.811/0001-00",outorga:45877,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"ALMEIDA COMERCIO DISTRIBUIDOR DE MATERIAIS DE CONSTRUCAO",cnpj:"35.419.548/0005-89",outorga:45307,validRfb:null,renovacao:46008,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"ozeas@atriacomex.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"AQF ENGENHARIA S/A",cnpj:"46.431.778/0001-56",outorga:45307,validRfb:45673,renovacao:45643,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGUIAR DISTRIBUIDORA DE PNEUS E PECAS EIRELI",cnpj:"07.211.405/0001-18",outorga:45267,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"",emails:"gleydsonteles@hotmail.com; TROPICAL-PNEUS@HOTMAIL.COM",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGRICOLA FAMOSA S.A (0002-93)",cnpj:"00.474.300/0002-93",outorga:45744,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"afilho@agrfamosa.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGRICOLA FAMOSA S.A (0018-50)",cnpj:"00.474.300/0018-50",outorga:46028,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGRICOLA FAMOSA S.A (0021-56)",cnpj:"00.474.300/0021-56",outorga:45631,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"afilho@agrfamosa.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"AVINE COMERCIAL E AVICOLA DO NORDESTE LTDA",cnpj:"41.434.556/0004-16",outorga:45295,validRfb:45657,renovacao:45627,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"compras6@avinealimentos.com.br; igornunes@avine.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"BARRETOS DISTRIBUIDORA DE ALIMENTOS LTDA",cnpj:"11.516.329/0001-26",outorga:44832,validRfb:45170,renovacao:45140,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"12/12 - SOLICITADO RENOVAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"BDA SALVADOR DISTRIBUIDORA DE ALIMENTOS LTDA",cnpj:"24.723.601/0001-90",outorga:45272,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"BEACH BIKE DIST. DE PEÇAS DE MOTO E BICICLETAS EIRELI",cnpj:"02.541.582/0001-49",outorga:45293,validRfb:45659,renovacao:45629,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"marcosrogerioimport@hotmail.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"B. HENRIQUE DE OLIVEIRA LEITE SANTOS",cnpj:"41.578.872/0001-19",outorga:null,validRfb:null,renovacao:46282,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"X",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"BRUNO CARDOSO DA SILVA ME",cnpj:"28.536.609/0001-07",outorga:46129,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"22/04/2027 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"CARMEHIL SOLUÇÕES INDUSTRIAIS EIRELI ME",cnpj:"05.478.220/0001-49",outorga:46007,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2023 COBRADO NOVAMENTE",emails:"elvis.silva@carmehil.com.br; flavio@carmehil.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"CARMEHIL COMERCIAL ELETRICA LTDA (0001-34)",cnpj:"02.403.486/0001-34",outorga:46007,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:"elvis.silva@carmehil.com.br; flavio@carmehil.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"CARAJAS MATERIAL DE CONSTRUCAO LTDA",cnpj:"03.656.804/0007-27",outorga:45622,validRfb:47483,renovacao:47453,status:"NO PRAZO",tipo:"FÍSICA",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"COMPANNY DO BRASIL IMPORTACAO E EXPORTACAO (0001-61)",cnpj:"07.965.203/0001-61",outorga:46063,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"01/04/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"COMPANNY DO BRASIL IMPORTACAO E EXPORTACAO (0002-42)",cnpj:"07.965.203/0002-42",outorga:46113,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"01/04/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"DC LOGISTICS BRASIL LTDA",cnpj:"74.182.593/0001-90",outorga:45258,validRfb:46733,renovacao:46703,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"OK",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"DELOS COMERCIO DE EQUIPAMENTOS ELETRICOS LTDA",cnpj:"34.190.356/0001-57",outorga:45197,validRfb:46624,renovacao:46594,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"NÃO VALIDADO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"NÃO VALIDADO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"DSV AIR & SEA BRASIL LTDA.",cnpj:"49.728.108/0001-94",outorga:45805,validRfb:46142,renovacao:46112,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"28/05 - RECEBIDO NOVA PROCURAÇÃO",emails:"luiz.oliveira@dsv.com; leogustavo.santos@dsv.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"EBBA – EMPRESA BRASILEIRA DE BEBIDAS E ALIMENTOS (MATRIZ/SP)",cnpj:"07.604.556/0001-36",outorga:46031,validRfb:46396,renovacao:46366,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"ELETRA INDUSTRIA E COMERCIO DE MEDIDORES (0001-15)",cnpj:"12.115.480/0001-15",outorga:46011,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"23/12 RECEBIDO A NOVA PROCURAÇÃO",emails:"comex@eletraenergy.com; juciely.oliveira@eletraenergy.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"ELETRA INDUSTRIA E COMERCIO DE MEDIDORES (0002-04)",cnpj:"12.115.480/0002-04",outorga:46011,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"23/12 RECEBIDO A NOVA PROCURAÇÃO",emails:"comex@eletraenergy.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"FAMOSA DISTRIBUICAO LTDA",cnpj:"28.132.974/0002-29",outorga:44914,validRfb:45291,renovacao:45261,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"19/12 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"FAZAGUA INDUSTRIA E COMERCIO DE BOMBAS LTDA",cnpj:"23.744.618/0001-61",outorga:46175,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"FARMACE INDÚSTRIA QUÍMICO FARMACÊUTICA CEARENSE LTDA.",cnpj:"06.628.333/0001-46",outorga:46050,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"OK",carlos:"",obs:"29/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"FRESENIUS KABI BRASIL LTDA (0001-04)",cnpj:"49.324.221/0001-04",outorga:45889,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"27/08/2024 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"FRESENIUS KABI BRASIL LTDA (0008-80)",cnpj:"49.324.221/0008-80",outorga:45889,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"27/08/2024 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"FERTILIZANTES HERINGER S.A.",cnpj:"22.266.175/0001-88",outorga:45273,validRfb:45639,renovacao:45609,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"GARRIDO E GUZMAN COMERCIAL DE ACESSORIOS (0001-84)",cnpj:"07.190.194/0001-84",outorga:45846,validRfb:45846,renovacao:45816,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"GARRIDO E GUZMAN COMERCIAL DE ACESSORIOS (0003-46)",cnpj:"07.190.194/0003-46",outorga:45861,validRfb:47483,renovacao:47453,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12/2025 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"GEOSCAN GEOLOGIA E GEOFÍSICA LTDA",cnpj:"23.731.971/0001-07",outorga:45792,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"GRANDE MOINHO CEARENSE S/A - PI",cnpj:"07.199.805/0002-36",outorga:46006,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"VENCIDO",sidney:"CANCELADO",paulo:"OK",lucas:"VENCIDO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"fpires@moinhocearense.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"GRANDE MOINHO CEARENSE S/A - CE",cnpj:"07.199.805/0001-55",outorga:46006,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"VENCIDO",lucas:"VENCIDO",carlos:"",obs:"04/12/2024 - SOLICITADO NOVA PROCURAÇÃO",emails:"fpires@moinhocearense.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"HIBRAS COMÉRCIO E LOGÍSTICA LTDA",cnpj:"22.023.611/0001-98",outorga:45953,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"INDÚSTRIAS REUNIDAS RENDA S/A",cnpj:"11.445.160/0001-60",outorga:44804,validRfb:45657,renovacao:45627,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"JH VIEIRA MAGALHAES LTDA",cnpj:"34.513.439/0001-30",outorga:46035,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"05/01/2026 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"LF IMPORTADORA LTDA.",cnpj:"47.388.322/0001-13",outorga:44902,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"LF2 IMPORTADORA LTDA.",cnpj:"48.150.280/0001-40",outorga:44902,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"MOTO PECAS DUAS RODAS LTDA",cnpj:"06.027.168/0001-77",outorga:45944,validRfb:46387,renovacao:46357,status:"NO PRAZO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"NORDESTE CORDIS LTDA",cnpj:"04.657.412/0001-50",outorga:46147,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"OK ENERGY IMPORTAÇÃO E EXPORTAÇÃO LTDA",cnpj:"27.568.657/0001-06",outorga:46132,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"X",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"PAPARIPABA AGROINDUSTRIAL LTDA",cnpj:"05.492.380/0001-42",outorga:46020,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"29/12 - NOVA PROCURAÇÃO RECEBIDA",emails:"exportacao@paragro.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"PINDSTRUP BRASIL COMERCIO DE SUBSTRATOS",cnpj:"19.479.029/0001-26",outorga:46088,validRfb:46477,renovacao:46447,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"OK",sidney:"OK",paulo:"OK",lucas:"CANCELADO",carlos:"",obs:"03/03/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"cjb@pindstrup.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"PRIME SEAFOOD LTDA (0001-02)",cnpj:"15.452.593/0001-02",outorga:45819,validRfb:46549,renovacao:46519,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"11/06/2025 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"PRIME SEAFOOD LTDA (0011-76)",cnpj:"15.452.593/0011-76",outorga:45819,validRfb:46549,renovacao:46519,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"VENCIDO",paulo:"VENCIDO",lucas:"VENCIDO",carlos:"",obs:"11/06/2025 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"SAMARIA RAÇÕES E NUTRIÇÃO ANIMAL LTDA",cnpj:"32.972.772/0001-81",outorga:45351,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"sleal@samariaracoes.com.br; msousa@samariaracoes.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"SAS DO BRASIL SOLUÇÕES AGROSUSTENTAVEIS",cnpj:"15.260.104/0001-02",outorga:45287,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"rogerio.anastacio@sas-agri.com",radar:"",ecac:"",pdfLink:""},
+  {importador:"ST INDUSTRIA DE EMBALAGENS E MATERIAL PLASTICOS LTDA",cnpj:"34.403.932/0001-05",outorga:45637,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"financeiro@stembalagem.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"TOPBIO - INSUMOS BIOLOGICOS INDUSTRIA E COMERCIO LTDA",cnpj:"22.296.945/0001-35",outorga:46028,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"OK",carlos:"",obs:"06/01 - RECEBIDO NOVA PROCURAÇÃO",emails:"afilho@agrfamosa.com.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"TOPPLANT COMERCIO DE MUDAS LTDA (0001-90)",cnpj:"04.988.852/0001-90",outorga:46035,validRfb:46391,renovacao:46361,status:"NO PRAZO",tipo:"VIRTUAL",norton:"OK",sidney:"OK",paulo:"OK",lucas:"NÃO VALIDADO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"TOPPLANT COMERCIO DE MUDAS LTDA (0002-70)",cnpj:"04.988.852/0002-70",outorga:44552,validRfb:44926,renovacao:44896,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"X",sidney:"OK",paulo:"X",lucas:"X",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"TRUST TRADE IMPORTACAO E EXPORTACAO EIRELI",cnpj:"24.110.284/0002-18",outorga:44399,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"TRADE",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"USIBRAS USINA BRASILEIRA DE OLEOS E CASTRANHAS (0003-89)",cnpj:"08.395.782/0003-89",outorga:46020,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"29/12 - RECEBIDO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"USIBRAS USINA BRASILEIRA DE OLEOS E CASTRANHAS (0001-17)",cnpj:"08.395.782/0001-17",outorga:45637,validRfb:46022,renovacao:45992,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL/FÍSICA",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"26/12 - SOLICITADO NOVA PROCURAÇÃO",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"VERDE BRASIL IMPORTAÇÃO E EXPORTAÇÃO DE SEMENTES (0001-24)",cnpj:"37.610.513/0001-24",outorga:46028,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"marcia.lima@verdebrasil.net.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"VERDE BRASIL IMPORTAÇÃO E EXPORTAÇÃO DE SEMENTES (0002-05)",cnpj:"37.610.513/0002-05",outorga:46028,validRfb:46752,renovacao:46722,status:"NO PRAZO",tipo:"VIRTUAL/FÍSICA",norton:"X",sidney:"OK",paulo:"OK",lucas:"X",carlos:"X",obs:"06/01/2026 - RECEBIDO NOVA PROCURAÇÃO",emails:"marcia.lima@verdebrasil.net.br",radar:"",ecac:"",pdfLink:""},
+  {importador:"VESTAS DO BRASIL ENERGIA EÓLICA LTDA (0002-32)",cnpj:"04.919.351/0002-32",outorga:44796,validRfb:45291,renovacao:45261,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"OK",lucas:"SEM CADASTRO",carlos:"",obs:"EMAIL DE RENOVAÇÃO ENVIADO EM 05/11/2021",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"WARTSILA BRASIL LTDA (0001-52)",cnpj:"36.176.600/0001-52",outorga:45554,validRfb:45919,renovacao:45889,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"WINNING TRADING S.A",cnpj:"13.352.623/0001-75",outorga:45040,validRfb:46136,renovacao:46106,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"WORLD FREIGHT",cnpj:"71.908.859/0001-41",outorga:45030,validRfb:45396,renovacao:45366,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
 ];
 
 // ============================================================
 // DADOS — PROCURAÇÕES VENCIDAS
 // ============================================================
 const VENCIDAS = [
-  {importador:"ALUCOM LTDA",cnpj:"01.628.251/0001-88",outorga:null,validRfb:null,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"NÃO VALIDADO",sidney:"NÃO VALIDADO",paulo:"NÃO VALIDADO",lucas:"NÃO VALIDADO",carlos:"",obs:"Só tem o contrato social",emails:""},
-  {importador:"AGROCERA (0001-48)",cnpj:"08.699.104/0001-48",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"AGROCERA (0001-42)",cnpj:"20.263.546/0001-42",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"AILTON ALMEIDA TEMOTIO JUNIOR",cnpj:"23.741.983/0001-12",outorga:42821,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"AL IMPORTAÇÃO E EXPORTAÇÃO EIRELLI",cnpj:"08.583.993/0001-83",outorga:42753,validRfb:43100,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"AMAZON KINGDOM",cnpj:"23.814.623/0001-01",outorga:43655,validRfb:44196,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"AR PEÇAS & LUBRIFICANTES PARA AVIAÇÃO EIRELI",cnpj:"29.762.447/0001-80",outorga:43160,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"ARTTEC",cnpj:"19.227.467/0001-01",outorga:43538,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:""},
-  {importador:"B. YOU DISTRIBUICAO E EXPORTACAO S.A.",cnpj:"25.207.080/0001-81",outorga:43153,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:""},
+  {importador:"ALUCOM LTDA",cnpj:"01.628.251/0001-88",outorga:null,validRfb:null,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"NÃO VALIDADO",sidney:"NÃO VALIDADO",paulo:"NÃO VALIDADO",lucas:"NÃO VALIDADO",carlos:"",obs:"Só tem o contrato social",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGROCERA (0001-48)",cnpj:"08.699.104/0001-48",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AGROCERA (0001-42)",cnpj:"20.263.546/0001-42",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AILTON ALMEIDA TEMOTIO JUNIOR",cnpj:"23.741.983/0001-12",outorga:42821,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AL IMPORTAÇÃO E EXPORTAÇÃO EIRELLI",cnpj:"08.583.993/0001-83",outorga:42753,validRfb:43100,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AMAZON KINGDOM",cnpj:"23.814.623/0001-01",outorga:43655,validRfb:44196,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"AR PEÇAS & LUBRIFICANTES PARA AVIAÇÃO EIRELI",cnpj:"29.762.447/0001-80",outorga:43160,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"ARTTEC",cnpj:"19.227.467/0001-01",outorga:43538,validRfb:43830,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
+  {importador:"B. YOU DISTRIBUICAO E EXPORTACAO S.A.",cnpj:"25.207.080/0001-81",outorga:43153,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"SEM CADASTRO",sidney:"SEM CADASTRO",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
 ];
 
 let openEmailIdx = null;
@@ -480,6 +685,7 @@ function applyFilters() {
     const vRen = excelDate(r.renovacao);
     const rc   = rowClass(r);
     const eid  = 'email-' + i;
+    const rowKey = r.cnpj.replace(/[^0-9]/g, '');
 
     const tr = document.createElement('tr');
     tr.className = rc;
@@ -489,18 +695,20 @@ function applyFilters() {
         <div class="cnpj">${r.cnpj}</div>
         <div style="margin-top:4px">${alertaBadge(r)}</div>
       </td>
-      <td class="date-normal">${fmt(vOut)}</td>
-      <td class="date-strong">${fmt(vRfb)}</td>
-      <td class="date-normal">${fmt(vRen)}</td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)"></td>
+      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)"></td>
+      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.radar))}" onchange="updateDateField('${r.cnpj}','radar',this)" title="Data RADAR"></td>
+      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.ecac))}" onchange="updateDateField('${r.cnpj}','ecac',this)" title="Data ECAC"></td>
+      <td>${statusBadge(r)}</td>
       <td><span class="badge-tipo">${r.tipo || '—'}</span></td>
-      <td>
-        ${despBadge(r.norton,'Norton')}
-        ${despBadge(r.sidney,'Sidney')}
-        ${despBadge(r.paulo,'Paulo')}
-        ${despBadge(r.lucas,'Lucas')}
-        ${despBadge(r.carlos,'Carlos')}
+      <td style="white-space:nowrap">
+        <div style="margin-bottom:3px">${despSelect(r.cnpj,'norton',r.norton,'Norton')}</div>
+        <div>${despSelect(r.cnpj,'sidney',r.sidney,'Sidney')}</div>
       </td>
-      <td class="obs-text">${r.obs || ''}</td>
+      <td><input type="text" class="text-edit text-edit-wide" placeholder="e-mail@cliente.com" value="${r.emails || ''}" onchange="updateField('${r.cnpj}','emails',this)"></td>
+      <td>${pdfCell(r, rowKey)}</td>
+      <td class="obs-text"><input type="text" class="text-edit text-edit-wide" placeholder="—" value="${r.obs || ''}" onchange="updateField('${r.cnpj}','obs',this)"></td>
       <td><button class="email-btn" onclick="toggleEmail(${i},'${eid}')">✉ E-mail</button></td>
     `;
     tbody.appendChild(tr);
@@ -509,7 +717,7 @@ function applyFilters() {
     emailTr.className = 'email-row';
     emailTr.id = eid;
     emailTr.innerHTML = `
-      <td colspan="8">
+      <td colspan="13">
         <div class="email-box">${emailText(r)}</div>
         <button class="copy-btn" onclick="copyEmail('${eid}',this)">📋 Copiar e-mail</button>
       </td>

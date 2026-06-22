@@ -294,13 +294,16 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
         <div class="brand-sub">Ágil Soluções Aduaneiras · 2026</div>
       </div>
     </div>
-    <button class="new-btn" onclick="toggleNewClient()">＋ Novo cliente</button>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a href="/sistema-onboarding/index.html" style="font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #dde1e8;background:none;color:#666;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">☰ Menu</a>
+      <button class="new-btn" onclick="toggleNewClient()">＋ Novo cliente</button>
+    </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('painel')">📋 Painel comercial</button>
-    <button class="tab-btn" onclick="switchTab('formulario')">📝 Formulário do cliente</button>
+    <a class="tab-btn" href="formulario-cliente.html" target="_blank" style="text-decoration:none;display:inline-flex;align-items:center;">🔗 Abrir formulário público</a>
   </div>
 
   <!-- ══ TAB: PAINEL COMERCIAL ══ -->
@@ -347,141 +350,6 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     </div>
   </div>
 
-  <!-- ══ TAB: FORMULÁRIO DO CLIENTE ══ -->
-  <div id="tab-formulario" class="tab-panel">
-    <div class="form-card">
-      <p style="font-size:13px;color:#666;line-height:1.6;margin-bottom:1.5rem;">
-        Este formulário é enviado ao importador via link. Ao preencher e enviar, os dados chegam direto ao comercial da Ágil.
-      </p>
-
-      <div id="form-content">
-
-        <div class="form-section">
-          <div class="section-title"><span>🏢</span> Dados da empresa</div>
-          <div class="form-row" style="margin-bottom:12px;">
-            <div class="field-group"><label>Razão social *</label><input type="text" placeholder="Empresa XYZ Ltda."></div>
-            <div class="field-group"><label>CNPJ *</label><input type="text" placeholder="00.000.000/0001-00"></div>
-          </div>
-          <div class="form-row" style="margin-bottom:12px;">
-            <div class="field-group"><label>Nome do responsável *</label><input type="text" placeholder="Nome completo"></div>
-            <div class="field-group"><label>E-mail *</label><input type="email" placeholder="responsavel@empresa.com.br"></div>
-          </div>
-          <div class="form-row">
-            <div class="field-group"><label>Telefone / WhatsApp *</label><input type="text" placeholder="(85) 9 0000-0000"></div>
-            <div class="field-group">
-              <label>Estado (UF) *</label>
-              <select id="f-estado" onchange="checkEstado()">
-                <option value="">Selecione…</option>
-                <option value="CE">Ceará</option>
-                <option value="outro">Outro estado</option>
-              </select>
-            </div>
-          </div>
-          <div class="info-block" id="siscomex-info">
-            📋 <strong>Siscomex SEFAZ-CE:</strong> Você receberá por e-mail o passo a passo para inclusão dos nossos despachantes no Siscomex (DAE, GLME e envio de NFs).
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="section-title"><span>🌍</span> Vínculos internacionais</div>
-          <div class="field-group">
-            <label>Há vinculação com empresa estrangeira?</label>
-            <div class="radio-group">
-              <label class="radio-opt"><input type="radio" name="vinc" value="nao" checked onchange="toggleBlock('vinc-block', false)"><span>Não</span></label>
-              <label class="radio-opt"><input type="radio" name="vinc" value="sim" onchange="toggleBlock('vinc-block', true)"><span>Sim</span></label>
-            </div>
-          </div>
-          <div class="cond-block" id="vinc-block">
-            <label>Empresa estrangeira vinculada (nome e país):</label>
-            <input type="text" placeholder="Ex.: ABC Corp — Estados Unidos">
-            <div class="radio-group" style="margin-top:10px;">
-              <label class="radio-opt"><input type="radio" name="vinc-tipo"><span style="font-size:13px;color:#0D3B6E;">Com influência de preço</span></label>
-              <label class="radio-opt"><input type="radio" name="vinc-tipo"><span style="font-size:13px;color:#0D3B6E;">Sem influência de preço</span></label>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="section-title"><span>📦</span> Finalidade da mercadoria</div>
-          <div class="radio-group">
-            <label class="radio-opt"><input type="radio" name="final"><span>Revenda / Comercialização</span></label>
-            <label class="radio-opt"><input type="radio" name="final"><span>Consumo próprio</span></label>
-            <label class="radio-opt"><input type="radio" name="final"><span>Matéria-prima</span></label>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="section-title"><span>🛡️</span> Seguro de carga</div>
-          <div class="field-group">
-            <label>Possuem seguro de carga?</label>
-            <div class="radio-group">
-              <label class="radio-opt"><input type="radio" name="seguro" value="nao" checked onchange="toggleBlock('seguro-block', false)"><span>Não</span></label>
-              <label class="radio-opt"><input type="radio" name="seguro" value="sim" onchange="toggleBlock('seguro-block', true)"><span>Sim</span></label>
-            </div>
-          </div>
-          <div class="cond-block" id="seguro-block">
-            <label>Número da apólice:</label>
-            <input type="text" placeholder="Número da apólice">
-            <div class="form-row" style="margin-top:10px;gap:10px;">
-              <div>
-                <label style="font-size:12px;color:#0D3B6E;margin-bottom:4px;display:block;">Moeda:</label>
-                <select><option>USD</option><option>EUR</option><option>BRL</option></select>
-              </div>
-              <div>
-                <label style="font-size:12px;color:#0D3B6E;margin-bottom:4px;display:block;">Fechado em:</label>
-                <select><option>Valor fixo</option><option>Porcentagem</option></select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="section-title"><span>🧾</span> Impostos federais</div>
-          <div class="field-group">
-            <label>Os impostos federais serão debitados em:</label>
-            <div class="radio-group" style="margin-top:6px;">
-              <label class="radio-opt"><input type="radio" name="impfed" value="propria" onchange="toggleBlock('impfed-alert', false)"><span>Conta própria da empresa</span></label>
-              <label class="radio-opt"><input type="radio" name="impfed" value="agil" onchange="toggleBlock('impfed-alert', true)"><span>Numerário para a Ágil</span></label>
-            </div>
-            <div class="alert-block" id="impfed-alert">
-              ⚠ <strong>Ação interna:</strong> Solicitar ao financeiro o cadastro nos CPFs dos despachantes para habilitação do débito.
-            </div>
-          </div>
-          <div class="field-group">
-            <label>AFRMM será:</label>
-            <div class="radio-group" style="margin-top:6px;">
-              <label class="radio-opt"><input type="radio" name="afrmm"><span>Debitado em conta própria</span></label>
-              <label class="radio-opt"><input type="radio" name="afrmm"><span>Adiantado para a Ágil</span></label>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <div class="section-title"><span>📄</span> ICMS</div>
-          <div class="field-group">
-            <label>A empresa possui incentivo fiscal?</label>
-            <div class="radio-group" style="margin-top:6px;">
-              <label class="radio-opt"><input type="radio" name="icms" value="fdi" onchange="toggleBlock('fdi-block', true)"><span>Sim — FDI PROVIN</span></label>
-              <label class="radio-opt"><input type="radio" name="icms" value="integral" onchange="toggleBlock('fdi-block', false)"><span>Não — paga ICMS integral</span></label>
-            </div>
-          </div>
-          <div class="cond-block" id="fdi-block">
-            <label>Favor informar: Termo de Acordo + Resolução Cedin Vigente</label>
-            <input type="text" placeholder="Descreva ou informe onde enviar os documentos">
-          </div>
-        </div>
-
-        <button class="submit-btn" onclick="submitForm()">📤 Enviar dados para a Ágil</button>
-        <p style="font-size:11px;color:#aaa;text-align:center;margin-top:8px;">Dados tratados com confidencialidade conforme a LGPD.</p>
-      </div>
-
-      <div class="success-screen" id="success-screen">
-        <div class="success-icon-big">✅</div>
-        <div class="success-title">Dados recebidos com sucesso!</div>
-        <p class="success-desc">Nossa equipe já foi notificada e entrará em contato em breve.<br>Obrigado por confiar na Ágil Aduaneira.</p>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -499,7 +367,7 @@ const STEPS = [
 const EMAILS = {
   procuracao: c => `Assunto: Procuração — ${c.nome}\n\nPrezado(a) cliente,\n\nSegue em anexo o nosso modelo de procuração para que possam providenciar a assinatura e nos enviar o documento original ou digitalizado.\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}\n(85) 3046-3003 | comercial@agiladuaneira.com.br`,
   radar:      c => `Assunto: Vinculação no Radar — ${c.nome}\n\nPrezado(a) cliente,\n\nEnviamos em anexo o passo a passo para vinculação dos nossos despachantes no Radar (Receita Federal), etapa necessária para iniciarmos as operações de importação.\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}`,
-  dados:      c => `Assunto: Formulário de dados iniciais — ${c.nome}\n\nPrezado(a) cliente,\n\nPara iniciarmos o seu cadastro, pedimos que preencha o formulário digital pelo link abaixo:\n\n🔗 [LINK DO FORMULÁRIO]\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}`,
+  dados:      c => `Assunto: Formulário de dados iniciais — ${c.nome}\n\nPrezado(a) cliente,\n\nPara iniciarmos o seu cadastro, pedimos que preencha o formulário digital pelo link abaixo:\n\n🔗 https://agil-aduaneira.github.io/sistema-onboarding/formulario-cliente.html\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}`,
   apm:        c => `Assunto: Cadastro APM Terminals — ${c.nome}\n\nOlá, equipe APM Terminals,\n\nSolicitamos o cadastro do importador abaixo para fins de Scanner/Levante:\n\nRazão Social: ${c.nome}\nCNPJ: ${c.cnpj}\n\nAtenciosamente,\nÁgil Soluções Aduaneiras\n(85) 3046-3003`,
   siscomex:   c => `Assunto: Siscomex SEFAZ-CE — ${c.nome}\n\nPrezado(a) cliente,\n\nEnviamos em anexo o passo a passo para inclusão dos nossos despachantes no Siscomex da SEFAZ-CE (DAE, GLME e envio de NFs).\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}`,
   financeiro: c => `Para: financeiro@agiladuaneira.com.br\nAssunto: Novo cliente — débito de impostos — ${c.nome}\n\nEquipe Financeiro,\n\nO cliente ${c.nome} (CNPJ: ${c.cnpj}) optou pelo débito dos impostos federais via numerário para a Ágil. Solicitamos o cadastro nos CPFs dos despachantes.\n\nAtenciosamente,\n${c.resp || 'Comercial Ágil Aduaneira'}`,
@@ -508,9 +376,8 @@ const EMAILS = {
 let clients = [];
 
 function switchTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='painel')||(i===1&&tab==='formulario')));
-  document.getElementById('tab-painel').classList.toggle('active', tab==='painel');
-  document.getElementById('tab-formulario').classList.toggle('active', tab==='formulario');
+  // Apenas o painel comercial existe nesta tela; mantido por compatibilidade
+  document.getElementById('tab-painel').classList.add('active');
 }
 
 function toggleNewClient() {
@@ -658,19 +525,6 @@ function copyEmail(key, btn) {
     btn.textContent = '✓ Copiado!';
     setTimeout(() => btn.textContent = '📋 Copiar e-mail', 1500);
   });
-}
-
-// Formulário do cliente
-function toggleBlock(id, show) {
-  document.getElementById(id).classList.toggle('show', show);
-}
-function checkEstado() {
-  const v = document.getElementById('f-estado').value;
-  document.getElementById('siscomex-info').classList.toggle('show', v === 'CE');
-}
-function submitForm() {
-  document.getElementById('form-content').style.display = 'none';
-  document.getElementById('success-screen').style.display = 'block';
 }
 
 renderClients();
