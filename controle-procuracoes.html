@@ -13,6 +13,8 @@
   import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+  import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, addDoc, writeBatch }
+         from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyCeUJy4WhbTS80ElGhAbBGuw7oHUV3Bo0o",
@@ -25,6 +27,15 @@
 
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db   = getFirestore(app);
+  window.__db         = db;
+  window.__collection = collection;
+  window.__doc        = doc;
+  window.__setDoc     = setDoc;
+  window.__updateDoc  = updateDoc;
+  window.__addDoc     = addDoc;
+  window.__writeBatch = writeBatch;
+  window.__getDocs    = getDocs;
 
   // Tenta inicializar o Storage. Se o bucket ainda não estiver ativado no
   // console do Firebase, isso falha silenciosamente e o sistema cai no
@@ -308,7 +319,7 @@
 
   <!-- Aviso de edição -->
   <div style="display:flex;align-items:center;gap:8px;background:#E6F1FB;border-radius:8px;padding:8px 14px;margin-bottom:1rem;font-size:11.5px;color:#0D3B6E;">
-    ✏️ <strong>Datas editáveis:</strong> clique em qualquer data (Outorga, Val. RFB, Renov.) para alterá-la. As alterações recalculam os alertas automaticamente, mas <strong>não são salvas ao recarregar a página</strong> — isso exigirá conectar o sistema ao Firestore.
+    ✏️ <strong>Datas editáveis:</strong> clique em qualquer data (Outorga, Val. RFB, Renov.) para alterá-la. As alterações são <strong>salvas automaticamente no Firestore</strong> em tempo real.
   </div>
 
 
@@ -387,6 +398,7 @@ function updateDate(cnpj, field, inputEl) {
     const localDate = new Date(yyyy, mm - 1, dd);
     row[field] = toExcelSerial(localDate);
   }
+  fsUpdate(row, { [field]: row[field] });
   applyFilters();
 }
 
@@ -395,6 +407,7 @@ function updateField(cnpj, field, inputEl) {
   const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
   if (!row) return;
   row[field] = inputEl.value;
+  fsUpdate(row, { [field]: inputEl.value });
 }
 
 // Atualiza campos de DATA (radar, ecac) — salva como serial Excel
@@ -409,6 +422,7 @@ function updateDateField(cnpj, field, inputEl) {
     const localDate = new Date(yyyy, mm - 1, dd);
     row[field] = toExcelSerial(localDate);
   }
+  fsUpdate(row, { [field]: row[field] });
 }
 
 // Badge de status textual (coluna STATUS da planilha original)
@@ -447,6 +461,7 @@ async function uploadPdf(cnpj, inputEl) {
     const link = prompt('Firebase Storage ainda não está ativo neste sistema.\n\nCole aqui o link da pasta de rede ou do arquivo (ex: link do SharePoint/OneDrive):', row.pdfLink || '');
     if (link !== null) {
       row.pdfLink = link.trim();
+      fsUpdate(row, { pdfLink: row.pdfLink });
       applyFilters();
     }
     return;
@@ -458,6 +473,7 @@ async function uploadPdf(cnpj, inputEl) {
     await uploadBytes(fileRef, file);
     const url = await getDownloadURL(fileRef);
     row.pdfLink = url;
+    fsUpdate(row, { pdfLink: url });
     applyFilters();
   } catch (err) {
     alert('Erro ao enviar o PDF: ' + err.message);
@@ -540,8 +556,8 @@ function updateDespachante(cnpj, field, selectEl) {
   const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
   if (!row) return;
   row[field] = selectEl.value;
-  // Atualiza só a classe visual sem re-renderizar tudo
   selectEl.className = 'desp-select ' + despSelectClass(selectEl.value);
+  fsUpdate(row, { [field]: selectEl.value });
 }
 
 function rowClass(row) {
@@ -574,7 +590,12 @@ Equipe Ágil Soluções Aduaneiras
 // ============================================================
 // DADOS — CONTROLE (aba principal)
 // ============================================================
-const RAW = [
+// Arrays mutáveis — preenchidos pelo Firestore na inicialização
+let RAW      = [];
+let VENCIDAS = [];
+
+// Dados de seed (usados apenas na primeira execução)
+const DADOS_SEED_RAW = [
   {importador:"AERIS INDUSTRIA E COMERCIO DE EQUIPAMENTOS",cnpj:"12.528.708/0001-07",outorga:45495,validRfb:45860,renovacao:45830,status:"ENVIAR E-MAIL DE RENOVAÇÃO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
   {importador:"AMS BERNARDO-ME",cnpj:"08.648.158/0001-84",outorga:45377,validRfb:46472,renovacao:46442,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
   {importador:"AMCOR DO NORDESTE",cnpj:"12.350.811/0001-00",outorga:45877,validRfb:46254,renovacao:46224,status:"NO PRAZO",tipo:"VIRTUAL",norton:"SEM CADASTRO",sidney:"OK",paulo:"SEM CADASTRO",lucas:"SEM CADASTRO",carlos:"SEM CADASTRO",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
@@ -644,7 +665,7 @@ const RAW = [
 // ============================================================
 // DADOS — PROCURAÇÕES VENCIDAS
 // ============================================================
-const VENCIDAS = [
+const DADOS_SEED_VENCIDAS = [
   {importador:"ALUCOM LTDA",cnpj:"01.628.251/0001-88",outorga:null,validRfb:null,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"NÃO VALIDADO",sidney:"NÃO VALIDADO",paulo:"NÃO VALIDADO",lucas:"NÃO VALIDADO",carlos:"",obs:"Só tem o contrato social",emails:"",radar:"",ecac:"",pdfLink:""},
   {importador:"AGROCERA (0001-48)",cnpj:"08.699.104/0001-48",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
   {importador:"AGROCERA (0001-42)",cnpj:"20.263.546/0001-42",outorga:42947,validRfb:43465,renovacao:null,status:"PROCURAÇÃO VENCIDA",tipo:"—",norton:"",sidney:"",paulo:"",lucas:"",carlos:"",obs:"",emails:"",radar:"",ecac:"",pdfLink:""},
@@ -761,8 +782,92 @@ function updateStats() {
   document.getElementById('s-venc').textContent  = sVenc;
 }
 
-// inicializa
-applyFilters();
+// inicializa — carrega do Firestore
+(async function inicializar() {
+  // Mostra loading na tabela
+  const tbody = document.getElementById('tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:2rem;color:#6B7280;font-size:.85rem;">⏳ Carregando dados do Firestore...</td></tr>';
+
+  try {
+    const db = window.__db;
+    const col = window.__collection;
+    const getDocs = window.__getDocs;
+
+    // 1️⃣  Lê a coleção "procuracoes" do Firestore
+    const snap = await getDocs(col(db, 'procuracoes'));
+
+    if (snap.empty) {
+      // 2️⃣  Primeira vez: faz seed com os dados estáticos
+      console.log('[Firestore] Coleção vazia — fazendo seed dos registros estáticos...');
+      await seedFirestore();
+      // Relê após seed
+      const snap2 = await getDocs(col(db, 'procuracoes'));
+      snap2.forEach(d => {
+        const dado = d.data();
+        dado.__firestoreId = d.id;
+        if (dado.status === 'PROCURAÇÃO VENCIDA' || (dado.validRfb && dado.validRfb < 44000 && !dado.renovacao)) {
+          VENCIDAS.push(dado);
+        } else {
+          RAW.push(dado);
+        }
+      });
+    } else {
+      // 3️⃣  Dados existentes: carrega normalmente
+      snap.forEach(d => {
+        const dado = d.data();
+        dado.__firestoreId = d.id;
+        if (dado.status === 'PROCURAÇÃO VENCIDA') {
+          VENCIDAS.push(dado);
+        } else {
+          RAW.push(dado);
+        }
+      });
+    }
+    console.log(`[Firestore] Carregados: ${RAW.length} ativos + ${VENCIDAS.length} vencidas`);
+  } catch(e) {
+    console.error('[Firestore] Erro ao carregar:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:2rem;color:#B91C1C;">❌ Erro ao carregar dados do Firestore: ${e.message}</td></tr>`;
+    return;
+  }
+
+  applyFilters();
+  updateStats();
+})();
+
+// ─── SEED: grava os dados estáticos no Firestore (executa só uma vez) ─────────
+async function seedFirestore() {
+  const db        = window.__db;
+  const batch     = window.__writeBatch(db);
+  const colRef    = window.__collection(db, 'procuracoes');
+  const docFn     = window.__doc;
+
+  const TODOS = [...DADOS_SEED_RAW, ...DADOS_SEED_VENCIDAS];
+  TODOS.forEach((r, i) => {
+    // Usa CNPJ como ID do documento (remove formatação)
+    const id = r.cnpj.replace(/\D/g, '') + '_' + i;
+    const ref = docFn(colRef, id);
+    batch.set(ref, r);
+  });
+  await batch.commit();
+  console.log(`[Firestore] Seed concluído: ${TODOS.length} registros gravados`);
+}
+
+// ─── FUNÇÃO AUXILIAR: salvar/atualizar um registro no Firestore ───────────────
+async function fsUpdate(row, campos) {
+  if (!row.__firestoreId) {
+    console.warn('[Firestore] Registro sem __firestoreId, não foi salvo:', row.cnpj);
+    return;
+  }
+  try {
+    const db = window.__db;
+    const docFn = window.__doc;
+    const updateDoc = window.__updateDoc;
+    const ref = docFn(window.__collection(db, 'procuracoes'), row.__firestoreId);
+    await updateDoc(ref, campos);
+  } catch(e) {
+    console.error('[Firestore] Erro ao atualizar:', e);
+  }
+}
 </script>
 </body>
 </html>
