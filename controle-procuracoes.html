@@ -1070,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:.72rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.4px;">Validade RFB</label>
-          <input id="np-val-rfb" type="date" style="padding:8px;border:1px solid #D1D5DB;border-radius:7px;font-size:.82rem;font-family:inherit;outline:none;" onfocus="this.style.borderColor='#1A5EA8'" onblur="this.style.borderColor='#D1D5DB'">
+          <input id="np-val-rfb" type="date" style="padding:8px;border:1px solid #D1D5DB;border-radius:7px;font-size:.82rem;font-family:inherit;outline:none;" onfocus="this.style.borderColor='#1A5EA8'" onblur="this.style.borderColor='#D1D5DB'" onchange="calcularRenovacaoNova(this.value)">
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:.72rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.4px;">Renovar Até</label>
@@ -1152,6 +1152,14 @@ async function buscarCNPJ() {
 function mostrarStatusCNPJ(msg, cor) {
   const el = document.getElementById('np-cnpj-status');
   el.textContent = msg; el.style.color = cor; el.style.display = 'block';
+}
+
+// Recalcula "Renovar Até" automaticamente (RFB - 30 dias) ao editar a Validade RFB
+function calcularRenovacaoNova(valorIso) {
+  if (!valorIso) return;
+  const dt = new Date(valorIso + 'T00:00:00');
+  dt.setDate(dt.getDate() - 30);
+  document.getElementById('np-renovacao').value = dt.toISOString().slice(0,10);
 }
 
 // ─── ANEXAR PDF DA NOVA PROCURAÇÃO (Firebase Storage) ────────────────────────
