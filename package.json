@@ -1,0 +1,8 @@
+{
+  "name": "sistema-onboarding-api",
+  "private": true,
+  "description": "Função serverless (Vercel) que protege a chave da Anthropic usada na extração automática de datas de procurações.",
+  "dependencies": {
+    "jose": "^5.2.0"
+  }
+}
