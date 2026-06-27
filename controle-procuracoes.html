@@ -463,7 +463,8 @@ function statusBadge(row) {
 function pdfCell(row, rowKey) {
   const temArquivo = !!row.pdfLink;
   const verBtn = temArquivo
-    ? `<a href="${row.pdfLink}" target="_blank" class="pdf-link" title="Abrir PDF">📄 Ver</a>`
+    ? `<a href="${row.pdfLink}" target="_blank" class="pdf-link" title="Abrir PDF">📄 Ver</a>
+       <button class="pdf-upload-btn" title="Remover PDF anexado" onclick="removerPdf('${row.cnpj}')">🗑️</button>`
     : `<span class="pdf-empty">—</span>`;
   return `
     <div class="pdf-cell">
@@ -472,6 +473,16 @@ function pdfCell(row, rowKey) {
       <input type="file" id="file-${rowKey}" accept="application/pdf" style="display:none" onchange="uploadPdf('${row.cnpj}', this)">
     </div>
   `;
+}
+
+// Remove apenas o PDF anexado (mantém a procuração na tabela)
+async function removerPdf(cnpj) {
+  if (!confirm('Remover o PDF anexado desta procuração?')) return;
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  row.pdfLink = '';
+  await fsUpdate(row, { pdfLink: '' });
+  applyFilters();
 }
 
 // Upload do PDF para Firebase Storage (requer Storage ativado no console do Firebase)
@@ -792,7 +803,11 @@ function applyFilters() {
     return mQ && mT && mV;
   });
 
-  rows.sort((a, b) => (URG_ORDER[urgency(a)] ?? 9) - (URG_ORDER[urgency(b)] ?? 9));
+  rows.sort((a, b) => {
+    const u = (URG_ORDER[urgency(a)] ?? 9) - (URG_ORDER[urgency(b)] ?? 9);
+    if (u !== 0) return u;
+    return a.importador.localeCompare(b.importador, 'pt-BR');
+  });
 
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
@@ -885,11 +900,18 @@ function updateStats() {
 
 // ─── FIRESTORE: helper de update ─────────────────────────────────────────────
 async function fsUpdate(row, campos) {
-  if (!row.__firestoreId) { console.warn('[Firestore] sem ID:', row.cnpj); return; }
+  if (!row.__firestoreId) {
+    console.warn('[Firestore] sem ID:', row.cnpj);
+    alert('Não foi possível salvar: este registro não tem ID do Firestore.');
+    return;
+  }
   try {
     const ref = window.__doc(window.__collection(window.__db, 'procuracoes'), row.__firestoreId);
     await window.__updateDoc(ref, campos);
-  } catch(e) { console.error('[Firestore] updateDoc:', e); }
+  } catch(e) {
+    console.error('[Firestore] updateDoc:', e);
+    alert('Erro ao salvar no Firestore: ' + e.message);
+  }
 }
 
 // ─── FIRESTORE: excluir procuração ───────────────────────────────────────────
@@ -1161,6 +1183,13 @@ async function salvarNovaProcuracao() {
   const cnpj       = document.getElementById('np-cnpj').value.trim();
   const importador = document.getElementById('np-importador').value.trim();
   if (!cnpj || !importador) { alert('CNPJ e Razão Social são obrigatórios.'); return; }
+
+  const cnpjDigits = cnpj.replace(/\D/g, '');
+  const existente = [...RAW, ...VENCIDAS].find(r => r.cnpj.replace(/\D/g, '') === cnpjDigits);
+  if (existente) {
+    alert(`⚠️ Já existe uma procuração cadastrada para este CNPJ:\n\n${existente.importador}\n${existente.cnpj}`);
+    return;
+  }
 
   function toSerial(iso) {
     if (!iso) return null;
