@@ -217,26 +217,21 @@
   }
   .pdf-upload-btn:hover { background: #E6F1FB; border-color: #185FA5; }
 
-  /* Select dos despachantes (Norton / Sidney) */
-  .desp-select {
-    border: 1px solid transparent;
-    background: transparent;
-    font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 4px;
-    border-radius: 5px;
-    cursor: pointer;
-    width: 76px;
-    color: inherit;
+  /* Toggle dos despachantes (Norton / Sidney) — ativo/inativo */
+  .desp-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .desp-toggle .desp-letter { font-size: 11px; font-weight: 700; color: #374151; width: 12px; }
+  .desp-toggle input { display: none; }
+  .desp-toggle .desp-slider {
+    width: 26px; height: 15px; background: #D1D5DB; border-radius: 999px;
+    position: relative; transition: background .15s; flex-shrink: 0;
   }
-  .desp-select:hover { border-color: #dde1e8; background: #fff; }
-  .desp-select:focus { outline: none; border-color: #185FA5; background: #fff; box-shadow: 0 0 0 3px rgba(24,95,165,.12); }
-  .desp-select.d-ok-bg   { background: #EAF3DE !important; color: #2E7D32 !important; }
-  .desp-select.d-venc-bg { background: #FCEBEB !important; color: #A32D2D !important; }
-  .desp-select.d-nv-bg   { background: #FAEEDA !important; color: #854F0B !important; }
-  .desp-select.d-can-bg  { background: #F4C0D1 !important; color: #721B38 !important; }
-  .desp-select.d-nc-bg   { background: #f0f0f0 !important; color: #aaa !important; }
+  .desp-toggle .desp-slider::before {
+    content: ''; position: absolute; width: 11px; height: 11px; border-radius: 50%;
+    background: #fff; top: 2px; left: 2px; transition: transform .15s;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .desp-toggle input:checked + .desp-slider { background: #2E7D32; }
+  .desp-toggle input:checked + .desp-slider::before { transform: translateX(11px); }
 
   @media (max-width: 700px) {
     .stats { grid-template-columns: repeat(2,1fr); }
@@ -255,7 +250,7 @@
   padding:6px 20px; box-shadow:0 1px 4px rgba(0,0,0,.2);
 ">
   <div style="display:flex;align-items:center;gap:8px;">
-    <span style="font-size:15px;">⚓</span>
+    <span style="font-size:15px;">📋</span>
     <strong style="color:#fff;font-size:12px;">Ágil Aduaneira</strong>
     <span style="color:rgba(255,255,255,.3)">·</span>
     <span>Controle de Procurações</span>
@@ -333,7 +328,7 @@
 
   <!-- Aviso de edição -->
   <div style="display:flex;align-items:center;gap:8px;background:#E6F1FB;border-radius:8px;padding:8px 14px;margin-bottom:1rem;font-size:11.5px;color:#0D3B6E;">
-    ✏️ <strong>Datas editáveis:</strong> clique em qualquer data (Outorga, Val. RFB, Renov.) para alterá-la. As alterações são <strong>salvas automaticamente no Firestore</strong> em tempo real.
+    💾 Salvando em tempo real
   </div>
 
 
@@ -424,7 +419,23 @@ function updateDate(cnpj, field, inputEl) {
     rowEls.forEach(el => { if (el.dataset.field === 'renovacao') el.value = dtRfb.toISOString().slice(0,10); });
   }
   fsUpdate(row, camposUpdate);
-  applyFilters();
+  refreshRowVisual(cnpj);
+}
+
+// Atualiza só a aparência da linha (cor/status) sem recriar os inputs —
+// recriar os inputs durante a digitação faz o campo de data perder o foco
+// a cada caractere. O reordenamento completo só acontece ao saciar (blur).
+function refreshRowVisual(cnpj) {
+  const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
+  if (!row) return;
+  const tr = document.querySelector(`tr[data-cnpj="${cnpj}"]`);
+  if (!tr) return;
+  tr.className = rowClass(row);
+  const statusCell = tr.children[6];
+  if (statusCell) statusCell.innerHTML = statusBadge(row);
+  const alertaCell = tr.children[0]?.querySelector('div:last-child');
+  if (alertaCell) alertaCell.innerHTML = alertaBadge(row);
+  updateStats();
 }
 
 // Atualiza campos de texto simples (emails, obs) sem precisar re-renderizar tudo
@@ -570,30 +581,23 @@ function alertaBadge(row) {
   return '';
 }
 
-// Opções disponíveis para despachantes
-const DESP_OPCOES = ['OK', 'X', 'VENCIDO', 'NÃO VALIDADO', 'CANCELADO', 'SEM CADASTRO', 'RECUSADO', ''];
-
-function despSelectClass(val) {
-  const v = (val || '').toString().toUpperCase().trim();
-  if (v === 'OK' || v === 'X')               return 'd-ok-bg';
-  if (v === 'VENCIDO')                        return 'd-venc-bg';
-  if (v === 'NÃO VALIDADO' || v === 'NAO VALIDADO') return 'd-nv-bg';
-  if (v === 'CANCELADO' || v === 'RECUSADO') return 'd-can-bg';
-  return 'd-nc-bg';
+// Toggle simples: ativo (OK) ou inativo (X) para o despachante naquele importador
+function despToggle(cnpj, field, val, label) {
+  const ativo = (val || '').toString().toUpperCase().trim() === 'OK';
+  return `
+    <label class="desp-toggle" title="${label}: ${ativo ? 'Ativo' : 'Inativo'}">
+      <span class="desp-letter">${label[0]}</span>
+      <input type="checkbox" ${ativo ? 'checked' : ''} onchange="updateDespachante('${cnpj}','${field}', this.checked ? 'OK' : 'X'); this.closest('label').title='${label}: ' + (this.checked ? 'Ativo' : 'Inativo');">
+      <span class="desp-slider"></span>
+    </label>
+  `;
 }
 
-function despSelect(cnpj, field, val, label) {
-  const cls = despSelectClass(val);
-  const opts = DESP_OPCOES.map(o => `<option value="${o}" ${o === (val||'') ? 'selected' : ''}>${o || '—'}</option>`).join('');
-  return `<select class="desp-select ${cls}" title="${label}" onchange="updateDespachante('${cnpj}','${field}',this)">${opts}</select>`;
-}
-
-function updateDespachante(cnpj, field, selectEl) {
+function updateDespachante(cnpj, field, valor) {
   const row = RAW.find(r => r.cnpj === cnpj) || VENCIDAS.find(r => r.cnpj === cnpj);
   if (!row) return;
-  row[field] = selectEl.value;
-  selectEl.className = 'desp-select ' + despSelectClass(selectEl.value);
-  fsUpdate(row, { [field]: selectEl.value });
+  row[field] = valor;
+  fsUpdate(row, { [field]: valor });
 }
 
 function rowClass(row) {
@@ -823,22 +827,23 @@ function applyFilters() {
 
     const tr = document.createElement('tr');
     tr.className = rc;
+    tr.dataset.cnpj = r.cnpj;
     tr.innerHTML = `
       <td>
         <div class="client-name">${r.importador}</div>
         <div class="cnpj">${r.cnpj}</div>
         <div style="margin-top:4px">${alertaBadge(r)}</div>
       </td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)" data-cnpj="${r.cnpj}" data-field="outorga"></td>
-      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)" data-cnpj="${r.cnpj}" data-field="validRfb"></td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)" data-cnpj="${r.cnpj}" data-field="renovacao"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="outorga"></td>
+      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="validRfb"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="renovacao"></td>
       <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.radar))}" onchange="updateDateField('${r.cnpj}','radar',this)" title="Data RADAR"></td>
       <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.ecac))}" onchange="updateDateField('${r.cnpj}','ecac',this)" title="Data ECAC"></td>
       <td>${statusBadge(r)}</td>
       <td><span class="badge-tipo">${r.tipo || '—'}</span></td>
       <td style="white-space:nowrap">
-        <div style="margin-bottom:3px">${despSelect(r.cnpj,'norton',r.norton,'Norton')}</div>
-        <div>${despSelect(r.cnpj,'sidney',r.sidney,'Sidney')}</div>
+        <div style="margin-bottom:3px">${despToggle(r.cnpj,'norton',r.norton,'Norton')}</div>
+        <div>${despToggle(r.cnpj,'sidney',r.sidney,'Sidney')}</div>
       </td>
       <td><input type="text" class="text-edit text-edit-wide" placeholder="e-mail@cliente.com" value="${r.emails || ''}" onchange="updateField('${r.cnpj}','emails',this)"></td>
       <td>${pdfCell(r, rowKey)}</td>
