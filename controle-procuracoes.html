@@ -408,8 +408,8 @@ function updateDate(cnpj, field, inputEl) {
     row[field] = toExcelSerial(localDate);
   }
   const camposUpdate = { [field]: row[field] };
-  // Se editou Val. RFB e Renovar Até está vazio → calcular automaticamente (RFB - 30 dias)
-  if (field === 'validRfb' && row[field] && !row.renovacao) {
+  // Se editou Val. RFB → recalcular Renovar Até automaticamente (RFB - 30 dias)
+  if (field === 'validRfb' && row[field]) {
     const dtRfb = new Date(excelDate(row[field]));
     dtRfb.setDate(dtRfb.getDate() - 30);
     row.renovacao = toExcelSerial(dtRfb);
@@ -834,11 +834,11 @@ function applyFilters() {
         <div class="cnpj">${r.cnpj}</div>
         <div style="margin-top:4px">${alertaBadge(r)}</div>
       </td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="outorga"></td>
-      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="validRfb"></td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)" onblur="applyFilters()" data-cnpj="${r.cnpj}" data-field="renovacao"></td>
-      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.radar))}" onchange="updateDateField('${r.cnpj}','radar',this)" title="Data RADAR"></td>
-      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.ecac))}" onchange="updateDateField('${r.cnpj}','ecac',this)" title="Data ECAC"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)" onblur="applyFilters()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" data-cnpj="${r.cnpj}" data-field="outorga"></td>
+      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)" onblur="applyFilters()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" data-cnpj="${r.cnpj}" data-field="validRfb"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)" onblur="applyFilters()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" data-cnpj="${r.cnpj}" data-field="renovacao"></td>
+      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.radar))}" onchange="updateDateField('${r.cnpj}','radar',this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" title="Data RADAR"></td>
+      <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.ecac))}" onchange="updateDateField('${r.cnpj}','ecac',this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" title="Data ECAC"></td>
       <td>${statusBadge(r)}</td>
       <td><span class="badge-tipo">${r.tipo || '—'}</span></td>
       <td style="white-space:nowrap">
