@@ -63,6 +63,8 @@
       document.documentElement.style.visibility = 'visible';
       const el = document.getElementById('auth-user-email');
       if (el) el.textContent = user.email;
+      // Dispara evento para inicializar Firestore APÓS módulo estar pronto
+      window.dispatchEvent(new Event('firebaseReady'));
     }
   });
 
@@ -97,6 +99,9 @@
   .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 1.25rem; padding: 10px 14px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.05); font-size: 12px; color: #555; }
   .leg-item { display: flex; align-items: center; gap: 6px; }
   .leg-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+  .leg-filter { cursor: pointer; padding: 3px 8px; border-radius: 6px; border: 1.5px solid transparent; transition: border-color .15s, background .15s; user-select: none; }
+  .leg-filter:hover { border-color: #1A5EA8; background: #EBF3FF; }
+  .leg-filter.active { border-color: #0D3B6E; background: #D0E6FF; font-weight: 700; }
 
   /* Filtros */
   .filters { display: flex; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap; }
@@ -306,13 +311,21 @@
     <div class="stat"><div class="stat-label">Vencidas</div><div class="stat-val c-red" id="s-venc">—</div></div>
   </div>
 
-  <!-- Legenda -->
-  <div class="legend">
-    <strong style="font-size:11px;color:#555;margin-right:4px;">LEGENDA:</strong>
-    <div class="leg-item"><div class="leg-dot" style="background:#FFF0F0;border:1px solid #F5BABA"></div>Procuração vencida</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FFF5EC;border:1px solid #F5CFA0"></div>Vence em ≤ 30 dias — URGENTE</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#FFFBEC;border:1px solid #F5DFA0"></div>Solicitar renovação em breve</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#fff;border:1px solid #ccc"></div>No prazo</div>
+  <!-- Legenda clicável como filtro -->
+  <div class="legend" id="legend-bar">
+    <strong style="font-size:11px;color:#555;margin-right:4px;">LEGENDA / FILTRO:</strong>
+    <div class="leg-item leg-filter" data-filter="vencida" onclick="toggleLegendFilter('vencida',this)" title="Clique para filtrar">
+      <div class="leg-dot" style="background:#FFF0F0;border:1px solid #F5BABA"></div>Procuração vencida
+    </div>
+    <div class="leg-item leg-filter" data-filter="critica" onclick="toggleLegendFilter('critica',this)" title="Clique para filtrar">
+      <div class="leg-dot" style="background:#FFF5EC;border:1px solid #F5CFA0"></div>Vence em ≤ 30 dias — URGENTE
+    </div>
+    <div class="leg-item leg-filter" data-filter="alerta" onclick="toggleLegendFilter('alerta',this)" title="Clique para filtrar">
+      <div class="leg-dot" style="background:#FFFBEC;border:1px solid #F5DFA0"></div>Solicitar renovação em breve
+    </div>
+    <div class="leg-item leg-filter" data-filter="ok" onclick="toggleLegendFilter('ok',this)" title="Clique para filtrar">
+      <div class="leg-dot" style="background:#fff;border:1px solid #ccc"></div>No prazo
+    </div>
     <div class="leg-item" style="margin-left:auto;font-size:11px;color:#aaa;" id="count-label"></div>
   </div>
 
@@ -397,7 +410,18 @@ function updateDate(cnpj, field, inputEl) {
     const localDate = new Date(yyyy, mm - 1, dd);
     row[field] = toExcelSerial(localDate);
   }
-  fsUpdate(row, { [field]: row[field] });
+  const camposUpdate = { [field]: row[field] };
+  // Se editou Val. RFB e Renovar Até está vazio → calcular automaticamente (RFB - 30 dias)
+  if (field === 'validRfb' && row[field] && !row.renovacao) {
+    const dtRfb = new Date(excelDate(row[field]));
+    dtRfb.setDate(dtRfb.getDate() - 30);
+    row.renovacao = toExcelSerial(dtRfb);
+    camposUpdate.renovacao = row.renovacao;
+    // Atualizar input de renovação na tela
+    const rowEls = document.querySelectorAll(`[data-cnpj="${cnpj}"]`);
+    rowEls.forEach(el => { if (el.dataset.field === 'renovacao') el.value = dtRfb.toISOString().slice(0,10); });
+  }
+  fsUpdate(row, camposUpdate);
   applyFilters();
 }
 
@@ -677,6 +701,20 @@ const DADOS_SEED_VENCIDAS = [
 ];
 
 let openEmailIdx = null;
+let activeLegendFilter = null; // null = todos, 'vencida'|'critica'|'alerta'|'ok'
+
+function toggleLegendFilter(tipo, el) {
+  if (activeLegendFilter === tipo) {
+    // Desativar filtro
+    activeLegendFilter = null;
+    document.querySelectorAll('.leg-filter').forEach(e => e.classList.remove('active'));
+  } else {
+    activeLegendFilter = tipo;
+    document.querySelectorAll('.leg-filter').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+  }
+  applyFilters();
+}
 
 function applyFilters() {
   const view    = document.getElementById('view-sel').value;
@@ -690,6 +728,8 @@ function applyFilters() {
     let mV = true;
     if (view === 'renovar') mV = r.status.toUpperCase().includes('RENOVAÇÃO');
     if (view === 'alerta')  mV = urgency(r) === 'critica';
+    // Filtro por legenda clicável
+    if (activeLegendFilter) mV = mV && (urgency(r) === activeLegendFilter);
     return mQ && mT && mV;
   });
 
@@ -715,9 +755,9 @@ function applyFilters() {
         <div class="cnpj">${r.cnpj}</div>
         <div style="margin-top:4px">${alertaBadge(r)}</div>
       </td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)"></td>
-      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)"></td>
-      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vOut)}" onchange="updateDate('${r.cnpj}','outorga',this)" data-cnpj="${r.cnpj}" data-field="outorga"></td>
+      <td class="date-strong"><input type="date" class="date-edit date-edit-strong" value="${toInputDate(vRfb)}" onchange="updateDate('${r.cnpj}','validRfb',this)" data-cnpj="${r.cnpj}" data-field="validRfb"></td>
+      <td class="date-normal"><input type="date" class="date-edit" value="${toInputDate(vRen)}" onchange="updateDate('${r.cnpj}','renovacao',this)" data-cnpj="${r.cnpj}" data-field="renovacao"></td>
       <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.radar))}" onchange="updateDateField('${r.cnpj}','radar',this)" title="Data RADAR"></td>
       <td><input type="date" class="date-edit" value="${toInputDate(parseRadarEcac(r.ecac))}" onchange="updateDateField('${r.cnpj}','ecac',this)" title="Data ECAC"></td>
       <td>${statusBadge(r)}</td>
@@ -804,7 +844,7 @@ async function seedFirestore() {
 }
 
 // ─── FIRESTORE: inicialização ─────────────────────────────────────────────────
-(async function inicializar() {
+window.addEventListener('firebaseReady', async function inicializar() {
   const tbody = document.getElementById('tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:2rem;color:#6B7280;font-size:.85rem;">⏳ Carregando dados do Firestore...</td></tr>';
 
@@ -834,7 +874,7 @@ async function seedFirestore() {
 
   applyFilters();
   updateStats();
-})();
+});
 </script>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -901,12 +941,15 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
 
       <!-- Upload PDF → extração automática de datas via IA -->
-      <div style="background:#F0F7FF;border:1px dashed #1A5EA8;border-radius:9px;padding:14px;">
-        <div style="font-size:.78rem;font-weight:700;color:#0D3B6E;margin-bottom:8px;">📄 Anexar PDF da Procuração — extração automática de datas via IA</div>
+      <div id="np-pdf-dropzone" style="background:#F0F7FF;border:2px dashed #1A5EA8;border-radius:9px;padding:16px;transition:background .15s,border-color .15s;"
+        ondragover="event.preventDefault();this.style.background='#D6EAFF';this.style.borderColor='#0D3B6E';"
+        ondragleave="this.style.background='#F0F7FF';this.style.borderColor='#1A5EA8';"
+        ondrop="event.preventDefault();this.style.background='#F0F7FF';this.style.borderColor='#1A5EA8';const f=event.dataTransfer.files[0];if(f&&f.type==='application/pdf'){document.getElementById('np-pdf-upload').files=event.dataTransfer.files;processarPDFFile(f);}else{alert('Selecione um arquivo PDF.');}">
+        <div style="font-size:.78rem;font-weight:700;color:#0D3B6E;margin-bottom:10px;">📄 Anexar PDF da Procuração — extração automática de datas via IA</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <label for="np-pdf-upload" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#fff;border:1px solid #D1D5DB;border-radius:7px;font-size:.8rem;font-weight:600;cursor:pointer;color:#374151;" onmouseover="this.style.borderColor='#1A5EA8'" onmouseout="this.style.borderColor='#D1D5DB'">📎 Selecionar PDF</label>
           <input type="file" id="np-pdf-upload" accept="application/pdf" style="display:none;" onchange="processarPDF(this)">
-          <span id="np-pdf-nome" style="font-size:.78rem;color:#6B7280;">Nenhum arquivo selecionado</span>
+          <span id="np-pdf-nome" style="font-size:.78rem;color:#6B7280;">Nenhum arquivo selecionado — ou arraste aqui 🖱️</span>
         </div>
         <div id="np-pdf-status" style="font-size:.78rem;color:#6B7280;margin-top:8px;display:none;"></div>
       </div>
@@ -1003,8 +1046,11 @@ function mostrarStatusCNPJ(msg, cor) {
 }
 
 // ─── EXTRAÇÃO AUTOMÁTICA DE DATAS DO PDF VIA IA (Claude API) ─────────────────
-async function processarPDF(input) {
+function processarPDF(input) {
   const file = input.files[0]; if (!file) return;
+  processarPDFFile(file);
+}
+async function processarPDFFile(file) {
   document.getElementById('np-pdf-nome').textContent = file.name;
   const st = document.getElementById('np-pdf-status');
   st.style.display = 'block'; st.style.color = '#6B7280';
@@ -1018,7 +1064,10 @@ async function processarPDF(input) {
     });
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6', max_tokens: 300,
         messages: [{ role: 'user', content: [
