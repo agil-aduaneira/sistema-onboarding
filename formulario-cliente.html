@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formulário de Dados Iniciais — Ágil Aduaneira</title>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey:            "AIzaSyCeUJy4WhbTS80ElGhAbBGuw7oHUV3Bo0o",
+    authDomain:        "sistema-onboarding.firebaseapp.com",
+    projectId:         "sistema-onboarding",
+    storageBucket:     "sistema-onboarding.firebasestorage.app",
+    messagingSenderId: "961981483566",
+    appId:             "1:961981483566:web:4cbf13839be89cc50dedbf"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  window.__enviarFormulario = async function (dados) {
+    await addDoc(collection(db, "respostas_dados_iniciais"), {
+      ...dados,
+      status: "novo",
+      createdAt: serverTimestamp()
+    });
+  };
+</script>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; min-height: 100vh; color: #1A1D2E; }
+.page { max-width: 720px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 1.5rem; padding: 1rem 1.5rem;
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.brand-icon {
+  width: 38px; height: 38px; background: #185FA5; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; flex-shrink: 0;
+}
+.brand-name { font-size: 15px; font-weight: 600; }
+.brand-sub  { font-size: 12px; color: #888; margin-top: 1px; }
+
+.intro {
+  background: #fff; border-radius: 12px; padding: 1.2rem 1.5rem; margin-bottom: 1.2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06); font-size: 13.5px; line-height: 1.5; color: #444;
+}
+
+.section {
+  background: #fff; border-radius: 12px; padding: 1.4rem 1.5rem; margin-bottom: 1.2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.section-title {
+  font-size: 14px; font-weight: 700; color: #185FA5; margin-bottom: 1rem;
+  display: flex; align-items: center; gap: 6px;
+}
+.field { margin-bottom: 1rem; }
+.field label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 5px; }
+.field .hint { font-size: 11.5px; color: #888; margin-top: 3px; }
+.field input[type=text], .field input[type=email], .field input[type=tel], .field select, .field textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid #dde1e8; border-radius: 8px;
+  font-size: 13.5px; font-family: inherit; background: #fafbfc;
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: #185FA5; background: #fff; }
+.field textarea { resize: vertical; min-height: 60px; }
+
+.radio-row { display: flex; gap: 18px; flex-wrap: wrap; }
+.radio-opt { display: flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+.radio-opt input { accent-color: #185FA5; width: 16px; height: 16px; cursor: pointer; }
+
+.checkbox-row { display: flex; gap: 18px; flex-wrap: wrap; }
+.checkbox-opt { display: flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+.checkbox-opt input { accent-color: #185FA5; width: 16px; height: 16px; cursor: pointer; }
+
+.conditional { display: none; margin-top: .8rem; padding-top: .8rem; border-top: 1px dashed #e3e6ec; }
+.conditional.visible { display: block; }
+
+.submit-bar { text-align: center; margin-top: 1.5rem; }
+.btn-submit {
+  background: #185FA5; color: #fff; border: none; border-radius: 9px;
+  padding: 13px 32px; font-size: 14.5px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background .15s;
+}
+.btn-submit:hover { background: #0D3B6E; }
+.btn-submit:disabled { background: #aab4c0; cursor: not-allowed; }
+
+.req { color: #d9534f; }
+
+#tela-sucesso {
+  display: none; text-align: center; background: #fff; border-radius: 12px;
+  padding: 3rem 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+#tela-sucesso .icon { font-size: 48px; margin-bottom: 1rem; }
+#tela-sucesso h2 { font-size: 18px; margin-bottom: .5rem; color: #1A1D2E; }
+#tela-sucesso p { font-size: 13.5px; color: #666; }
+
+#erro-msg { color: #d9534f; font-size: 13px; text-align: center; margin-top: .8rem; display: none; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="topbar">
+    <div class="brand-icon">🛃</div>
+    <div>
+      <div class="brand-name">Ágil Soluções Aduaneiras</div>
+      <div class="brand-sub">Formulário de Dados Iniciais — Onboarding de Clientes</div>
+    </div>
+  </div>
+
+  <form id="form-dados" onsubmit="return false;">
+
+    <div class="intro">
+      Olá! Para iniciarmos o processo de importação, pedimos que preencha as informações abaixo
+      com atenção. Os dados serão enviados diretamente para a equipe da Ágil Aduaneira.
+    </div>
+
+    <!-- Identificação -->
+    <div class="section">
+      <div class="section-title">🏢 Identificação da empresa</div>
+      <div class="field">
+        <label>Razão social <span class="req">*</span></label>
+        <input type="text" id="f-nome" required placeholder="Empresa ABC Ltda.">
+      </div>
+      <div class="field">
+        <label>CNPJ <span class="req">*</span></label>
+        <input type="text" id="f-cnpj" required placeholder="00.000.000/0001-00">
+      </div>
+      <div class="field">
+        <label>Nome do responsável pelo preenchimento</label>
+        <input type="text" id="f-responsavel" placeholder="Nome completo">
+      </div>
+      <div class="field">
+        <label>E-mail para contato <span class="req">*</span></label>
+        <input type="email" id="f-email" required placeholder="contato@empresa.com.br">
+      </div>
+      <div class="field">
+        <label>Telefone</label>
+        <input type="tel" id="f-telefone" placeholder="(00) 00000-0000">
+      </div>
+    </div>
+
+    <!-- Vinculação estrangeira -->
+    <div class="section">
+      <div class="section-title">🌎 Vinculação com empresa estrangeira</div>
+      <div class="field">
+        <label>Há vinculação com alguma empresa estrangeira?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="vinculacao" value="sim" onchange="toggleCond('cond-vinculacao', true)"> Sim</label>
+          <label class="radio-opt"><input type="radio" name="vinculacao" value="nao" onchange="toggleCond('cond-vinculacao', false)" checked> Não</label>
+        </div>
+      </div>
+      <div class="conditional" id="cond-vinculacao">
+        <div class="field">
+          <label>Dados completos da empresa estrangeira</label>
+          <textarea id="f-dados-empresa-estrangeira" placeholder="Razão social, país, endereço..."></textarea>
+        </div>
+        <div class="field">
+          <label>Com vinculação com influência de preço?</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="influencia-com" value="sim"> Sim</label>
+            <label class="radio-opt"><input type="radio" name="influencia-com" value="nao"> Não</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Com vinculação sem influência de preço?</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="influencia-sem" value="sim"> Sim</label>
+            <label class="radio-opt"><input type="radio" name="influencia-sem" value="nao"> Não</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Finalidade da mercadoria -->
+    <div class="section">
+      <div class="section-title">📦 Finalidade/utilização da mercadoria</div>
+      <div class="field">
+        <div class="checkbox-row">
+          <label class="checkbox-opt"><input type="checkbox" name="finalidade" value="revenda"> Revenda/Comercialização</label>
+          <label class="checkbox-opt"><input type="checkbox" name="finalidade" value="consumo"> Consumo</label>
+          <label class="checkbox-opt"><input type="checkbox" name="finalidade" value="materia-prima"> Matéria-prima</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Seguro -->
+    <div class="section">
+      <div class="section-title">🛡️ Seguro</div>
+      <div class="field">
+        <label>Possuem seguro?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="seguro" value="sim" onchange="toggleCond('cond-seguro', true)"> Sim</label>
+          <label class="radio-opt"><input type="radio" name="seguro" value="nao" onchange="toggleCond('cond-seguro', false)" checked> Não</label>
+        </div>
+      </div>
+      <div class="conditional" id="cond-seguro">
+        <div class="field">
+          <label>Qual a moeda?</label>
+          <input type="text" id="f-seguro-moeda" placeholder="Ex.: USD, BRL">
+        </div>
+        <div class="field">
+          <label>É fechado em valor ou porcentagem?</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="seguro-tipo" value="valor"> Valor</label>
+            <label class="radio-opt"><input type="radio" name="seguro-tipo" value="porcentagem"> Porcentagem</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>O valor/porcentagem é em cima do VMLE + FRETE?</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="seguro-vmle" value="sim"> Sim</label>
+            <label class="radio-opt"><input type="radio" name="seguro-vmle" value="nao"> Não</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Apólice de seguro</label>
+          <div class="hint">Por favor, envie a apólice por e-mail para comercial@agiladuaneira.com.br após o envio deste formulário.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Impostos federais -->
+    <div class="section">
+      <div class="section-title">💰 Impostos federais</div>
+      <div class="field">
+        <label>Os impostos federais serão debitados em vossa conta ou via numerário?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="impostos-federais" value="conta"> Débito em conta</label>
+          <label class="radio-opt"><input type="radio" name="impostos-federais" value="numerario"> Via numerário</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Pagamento do AFRMM: será debitado em vossa conta ou adiantado para a Ágil?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="afrmm" value="conta"> Débito em conta</label>
+          <label class="radio-opt"><input type="radio" name="afrmm" value="adiantado"> Adiantado para a Ágil</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Demais despesas do processo: pagas diretamente ou via numerário para a Ágil?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="demais-despesas" value="direta"> Pagas diretamente</label>
+          <label class="radio-opt"><input type="radio" name="demais-despesas" value="numerario"> Numerário para a Ágil</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ICMS -->
+    <div class="section">
+      <div class="section-title">🧾 ICMS</div>
+      <div class="field">
+        <label>Possuem algum incentivo fiscal?</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="icms-incentivo" value="sim" onchange="toggleCond('cond-icms', true)"> Sim</label>
+          <label class="radio-opt"><input type="radio" name="icms-incentivo" value="nao" onchange="toggleCond('cond-icms', false)" checked> Não — pago ICMS 20% integral</label>
+        </div>
+      </div>
+      <div class="conditional" id="cond-icms">
+        <div class="field">
+          <label>É inscrita no FDI/PROVIN?</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="fdi-provin" value="sim"> Sim</label>
+            <label class="radio-opt"><input type="radio" name="fdi-provin" value="nao"> Não</label>
+          </div>
+          <div class="hint">Caso positivo, envie o Termo de Acordo + Resolução Cedin vigente por e-mail para comercial@agiladuaneira.com.br.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Observações adicionais</label>
+      <textarea id="f-observacoes" placeholder="Informações adicionais relevantes..."></textarea>
+    </div>
+
+    <div class="submit-bar">
+      <button type="button" class="btn-submit" id="btn-enviar" onclick="enviarForm()">Enviar formulário</button>
+      <div id="erro-msg">Preencha os campos obrigatórios antes de enviar.</div>
+    </div>
+
+  </form>
+
+  <div id="tela-sucesso">
+    <div class="icon">✅</div>
+    <h2>Formulário enviado com sucesso!</h2>
+    <p>Obrigado por preencher os dados. Nossa equipe entrará em contato em breve para os próximos passos do onboarding.</p>
+  </div>
+
+</div>
+
+<script>
+function toggleCond(id, show) {
+  document.getElementById(id).classList.toggle('visible', show);
+}
+
+function radioValue(name) {
+  const el = document.querySelector(`input[name="${name}"]:checked`);
+  return el ? el.value : null;
+}
+
+function checkboxValues(name) {
+  return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(el => el.value);
+}
+
+async function enviarForm() {
+  const nome  = document.getElementById('f-nome').value.trim();
+  const cnpj  = document.getElementById('f-cnpj').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const erro  = document.getElementById('erro-msg');
+
+  if (!nome || !cnpj || !email) {
+    erro.style.display = 'block';
+    return;
+  }
+  erro.style.display = 'none';
+
+  const btn = document.getElementById('btn-enviar');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  const dados = {
+    nome, cnpj, email,
+    responsavel: document.getElementById('f-responsavel').value.trim(),
+    telefone: document.getElementById('f-telefone').value.trim(),
+    vinculacaoEstrangeira: radioValue('vinculacao'),
+    dadosEmpresaEstrangeira: document.getElementById('f-dados-empresa-estrangeira').value.trim(),
+    influenciaCom: radioValue('influencia-com'),
+    influenciaSem: radioValue('influencia-sem'),
+    finalidade: checkboxValues('finalidade'),
+    seguro: radioValue('seguro'),
+    seguroMoeda: document.getElementById('f-seguro-moeda').value.trim(),
+    seguroTipo: radioValue('seguro-tipo'),
+    seguroVmleFrete: radioValue('seguro-vmle'),
+    impostosFederais: radioValue('impostos-federais'),
+    afrmm: radioValue('afrmm'),
+    demaisDespesas: radioValue('demais-despesas'),
+    icmsIncentivo: radioValue('icms-incentivo'),
+    fdiProvin: radioValue('fdi-provin'),
+    observacoes: document.getElementById('f-observacoes').value.trim(),
+  };
+
+  try {
+    await window.__enviarFormulario(dados);
+    document.getElementById('form-dados').style.display = 'none';
+    document.getElementById('tela-sucesso').style.display = 'block';
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Enviar formulário';
+    erro.textContent = 'Não foi possível enviar o formulário. Tente novamente em alguns instantes.';
+    erro.style.display = 'block';
+  }
+}
+</script>
+
+</body>
+</html>
