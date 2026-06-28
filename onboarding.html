@@ -9,6 +9,8 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // ============================================================
   // 🔧 MESMOS DADOS DO SEU firebase no login.html
@@ -25,6 +27,23 @@
 
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  let storageInstance = null;
+  try {
+    storageInstance = getStorage(app);
+  } catch (e) {
+    console.warn('Firebase Storage não inicializado:', e.message);
+  }
+  window.__db           = db;
+  window.__doc          = doc;
+  window.__getDoc       = getDoc;
+  window.__setDoc        = setDoc;
+  window.storage         = storageInstance;
+  window.storageRef      = storageRef;
+  window.uploadBytes     = uploadBytes;
+  window.getDownloadURL  = getDownloadURL;
+  window.deleteObject    = deleteObject;
 
   document.documentElement.style.visibility = 'hidden';
 
@@ -88,6 +107,33 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
   transition: background .15s;
 }
 .new-btn:hover { background: #0D3B6E; }
+
+/* Modelos e Documentos */
+.docs-menu-btn {
+  background: #fff; color: #185FA5; border: 1px solid #185FA5; border-radius: 9px;
+  padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background .15s;
+}
+.docs-menu-btn:hover { background: #EAF2FA; }
+.docs-menu {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  background: #fff; border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.14);
+  width: 360px; padding: .6rem; max-height: 70vh; overflow-y: auto;
+}
+.docs-menu.open { display: block; }
+.docs-item { padding: .7rem .6rem; border-radius: 8px; }
+.docs-item:hover { background: #f7f9fb; }
+.docs-item + .docs-item { border-top: 1px solid #f0f1f4; }
+.docs-item-title { font-size: 13px; font-weight: 600; color: #1A1D2E; margin-bottom: 6px; }
+.docs-item-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.docs-btn {
+  font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 7px;
+  border: 1px solid #d1d5db; background: #fff; color: #374151; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 4px; text-decoration: none;
+}
+.docs-btn:hover { border-color: #185FA5; color: #185FA5; }
+.docs-btn.danger:hover { border-color: #d9534f; color: #d9534f; }
+.docs-status { font-size: 11px; color: #888; margin-left: 2px; }
 
 /* Tabs */
 .tabs { display: flex; gap: 0; border-bottom: 1px solid #e5e5e5; margin-bottom: 1.5rem; }
@@ -170,6 +216,12 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
   margin: 1rem 0 .5rem;
 }
 .section-label:first-child { margin-top: 0; }
+.resp-group-label {
+  font-size: 12px; font-weight: 700; color: #185FA5;
+  background: #EAF2FA; padding: 6px 10px; border-radius: 7px;
+  margin: 1.1rem 0 .6rem;
+}
+.resp-group-label:first-child { margin-top: 0; }
 .step { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
 .step:last-child { border-bottom: none; }
 .step-check {
@@ -275,6 +327,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
 .success-title { font-size: 20px; font-weight: 700; color: #1A1D2E; margin-bottom: 8px; }
 .success-desc { font-size: 14px; color: #666; line-height: 1.6; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -306,6 +359,10 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <a href="/sistema-onboarding/index.html" style="font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #dde1e8;background:none;color:#666;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">☰ Menu</a>
+      <div class="docs-menu-wrap" style="position:relative;">
+        <button class="docs-menu-btn" onclick="toggleDocsMenu()">📁 Modelos e Documentos ▾</button>
+        <div class="docs-menu" id="docs-menu"></div>
+      </div>
       <button class="new-btn" onclick="toggleNewClient()">＋ Novo cliente</button>
     </div>
   </div>
@@ -314,7 +371,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('painel')">📋 Painel comercial</button>
     <button class="tab-btn" onclick="switchTab('respostas')">📨 Respostas recebidas <span id="resp-badge" style="display:none;background:#d9534f;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span></button>
-    <a class="tab-btn" href="formulario-cliente.html" target="_blank" style="text-decoration:none;display:inline-flex;align-items:center;">🔗 Abrir formulário público</a>
+    <button class="tab-btn" style="display:inline-flex;align-items:center;" onclick="copiarLinkFormulario(this)">📋 Copiar link do formulário</button>
   </div>
 
   <!-- ══ TAB: PAINEL COMERCIAL ══ -->
@@ -406,6 +463,9 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
     docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
+    window.__respostasCache = {};
+    docs.forEach(d => window.__respostasCache[d.id] = d);
+
     const novos = docs.filter(d => d.status === 'novo').length;
     if (novos > 0) { badge.style.display = 'inline-block'; badge.textContent = novos; }
     else { badge.style.display = 'none'; }
@@ -423,9 +483,12 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
             <div class="resp-card-nome">${d.nome || '(sem nome)'} ${d.status === 'novo' ? '<span class="resp-tag-novo">NOVO</span>' : ''}</div>
             <div class="resp-card-sub">CNPJ: ${d.cnpj || '—'} · Recebido em ${data}</div>
           </div>
-          <button class="btn-cancel" style="font-size:12px;padding:6px 12px;" onclick="window.__marcarTratado('${d.id}', ${d.status !== 'tratado'})">
-            ${d.status === 'tratado' ? '↺ Marcar como novo' : '✓ Marcar como tratado'}
-          </button>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="btn-cancel" style="font-size:12px;padding:6px 12px;" onclick="window.__baixarPdfResposta('${d.id}')">📄 Baixar PDF</button>
+            <button class="btn-cancel" style="font-size:12px;padding:6px 12px;" onclick="window.__marcarTratado('${d.id}', ${d.status !== 'tratado'})">
+              ${d.status === 'tratado' ? '↺ Marcar como novo' : '✓ Marcar como tratado'}
+            </button>
+          </div>
         </div>
         <div class="resp-card-body">
           ${campo('Responsável', d.responsavel)}
@@ -456,20 +519,187 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     await updateDoc(doc(db, 'respostas_dados_iniciais', id), { status: marcarComoTratado ? 'tratado' : 'novo' });
   };
 
+  window.__baixarPdfResposta = function (id) {
+    const d = (window.__respostasCache || {})[id];
+    if (!d || !window.jspdf) { alert('Não foi possível gerar o PDF.'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 50;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    let y = 60;
+
+    const linhas = [
+      ['Cadastro Inicial — Dados do Cliente', null],
+      ['Razão social', d.nome],
+      ['CNPJ', d.cnpj],
+      ['Responsável pelo preenchimento', d.responsavel],
+      ['E-mail', d.email],
+      ['Telefone', d.telefone],
+      ['', null],
+      ['Vinculação com empresa estrangeira', SIMNAO[d.vinculacaoEstrangeira] || d.vinculacaoEstrangeira],
+      ['Dados completos da empresa estrangeira', d.dadosEmpresaEstrangeira],
+      ['Com vinculação com influência de preço', SIMNAO[d.influenciaCom] || d.influenciaCom],
+      ['Com vinculação sem influência de preço', SIMNAO[d.influenciaSem] || d.influenciaSem],
+      ['', null],
+      ['Finalidade/utilização da mercadoria', (d.finalidade || []).map(f => FINALIDADE_LABEL[f] || f).join(', ')],
+      ['', null],
+      ['Possuem seguro', SIMNAO[d.seguro] || d.seguro],
+      ['Moeda do seguro', d.seguroMoeda],
+      ['Fechado em valor ou porcentagem', d.seguroTipo],
+      ['Em cima do VMLE + FRETE', SIMNAO[d.seguroVmleFrete] || d.seguroVmleFrete],
+      ['', null],
+      ['Impostos federais — débito em conta ou numerário', d.impostosFederais === 'conta' ? 'Débito em conta' : d.impostosFederais === 'numerario' ? 'Via numerário' : d.impostosFederais],
+      ['AFRMM — débito em conta ou adiantado para a Ágil', d.afrmm === 'conta' ? 'Débito em conta' : d.afrmm === 'adiantado' ? 'Adiantado para a Ágil' : d.afrmm],
+      ['Demais despesas', d.demaisDespesas === 'direta' ? 'Pagas diretamente' : d.demaisDespesas === 'numerario' ? 'Numerário para a Ágil' : d.demaisDespesas],
+      ['', null],
+      ['Possuem incentivo fiscal (ICMS)', SIMNAO[d.icmsIncentivo] || d.icmsIncentivo],
+      ['Inscrita no FDI/PROVIN', SIMNAO[d.fdiProvin] || d.fdiProvin],
+      ['', null],
+      ['Observações', d.observacoes],
+    ];
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(14);
+    pdf.text('Ágil Soluções Aduaneiras', margin, y);
+    y += 18;
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Cadastro Inicial — Dados do Cliente', margin, y);
+    y += 28;
+
+    linhas.forEach(([label, valor]) => {
+      if (label === '') { y += 8; return; }
+      if (valor === null && label) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(12);
+        if (y > 760) { pdf.addPage(); y = 60; }
+        pdf.text(label, margin, y);
+        y += 18;
+        return;
+      }
+      if (y > 770) { pdf.addPage(); y = 60; }
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.text(label + ':', margin, y);
+      y += 13;
+      pdf.setFont('helvetica', 'normal');
+      const texto = (valor === undefined || valor === null || valor === '') ? '—' : String(valor);
+      const linhasTexto = pdf.splitTextToSize(texto, pageWidth - margin * 2);
+      if (y > 770) { pdf.addPage(); y = 60; }
+      pdf.text(linhasTexto, margin, y);
+      y += linhasTexto.length * 12 + 8;
+    });
+
+    pdf.save(`Dados_Iniciais_${(d.nome || 'cliente').replace(/[^a-z0-9]+/gi, '_')}.pdf`);
+  };
+
   const q = query(collection(db, 'respostas_dados_iniciais'));
   onSnapshot(q, renderRespostas, err => console.error('Erro ao carregar respostas:', err));
 </script>
 
+<!-- Modelos e Documentos (Procuração, Radar, Siscomex, DTE, Ecac) -->
+<script type="module">
+  const DOCS_MODELOS = [
+    { id: 'procuracao', titulo: '📄 Modelo de Procuração',                                portal: null },
+    { id: 'radar',      titulo: '📡 Passo a Passo Vinculação Radar',                       portal: 'https://portalunico.siscomex.gov.br/portal/' },
+    { id: 'siscomex',   titulo: '🧾 Passo a Passo Inclusão Representante Siscomex',         portal: 'https://servicos.sefaz.ce.gov.br/internet/acessoseguro/servicosenha/logarusuario/login.asp' },
+    { id: 'dte',        titulo: '📨 Passo a Passo Inclusão Representante DTE Sefaz-CE',     portal: 'https://portal-dte.sefaz.ce.gov.br/#/index' },
+    { id: 'ecac',       titulo: '🏛️ Passo a Passo Inclusão Representante Ecac',             portal: 'https://cav.receita.fazenda.gov.br/autenticacao/login' },
+  ];
+
+  let docsModelosData = {};
+
+  async function carregarDocsModelos() {
+    try {
+      const snap = await window.__getDoc(window.__doc(window.__db, 'config', 'modelos_documentos'));
+      docsModelosData = snap.exists() ? snap.data() : {};
+    } catch (e) {
+      console.error('Erro ao carregar modelos de documentos:', e);
+      docsModelosData = {};
+    }
+    renderDocsMenu();
+  }
+
+  function renderDocsMenu() {
+    const menu = document.getElementById('docs-menu');
+    menu.innerHTML = DOCS_MODELOS.map(item => {
+      const info = docsModelosData[item.id];
+      const temArquivo = info && info.url;
+      return `
+        <div class="docs-item">
+          <div class="docs-item-title">${item.titulo}</div>
+          <div class="docs-item-actions">
+            <label class="docs-btn" for="docs-file-${item.id}">📎 Subir</label>
+            <input type="file" id="docs-file-${item.id}" accept="application/pdf" style="display:none" onchange="window.__uploadDocModelo('${item.id}', this)">
+            ${temArquivo ? `<a class="docs-btn" href="${info.url}" target="_blank">👁 Ver</a>` : ''}
+            ${temArquivo ? `<button type="button" class="docs-btn danger" onclick="window.__excluirDocModelo('${item.id}')">🗑 Excluir</button>` : ''}
+            ${item.portal ? `<a class="docs-btn" href="${item.portal}" target="_blank">🔗 Abrir portal</a>` : ''}
+          </div>
+          ${temArquivo ? `<div class="docs-status">${info.nome || 'arquivo anexado'}</div>` : `<div class="docs-status">Nenhum arquivo anexado</div>`}
+        </div>
+      `;
+    }).join('');
+  }
+
+  window.toggleDocsMenu = function () {
+    const menu = document.getElementById('docs-menu');
+    const isOpen = menu.classList.contains('open');
+    if (!isOpen) carregarDocsModelos();
+    menu.classList.toggle('open', !isOpen);
+  };
+
+  document.addEventListener('click', e => {
+    const wrap = document.querySelector('.docs-menu-wrap');
+    if (wrap && !wrap.contains(e.target)) document.getElementById('docs-menu').classList.remove('open');
+  });
+
+  window.__uploadDocModelo = async function (id, inputEl) {
+    const file = inputEl.files[0];
+    if (!file) return;
+
+    let url, nome = file.name;
+    if (!window.storage) {
+      url = prompt('Firebase Storage ainda não está ativo neste sistema.\n\nCole aqui o link do arquivo (ex: SharePoint/OneDrive):', '');
+      if (!url) { inputEl.value = ''; return; }
+    } else {
+      try {
+        const fileRef = window.storageRef(window.storage, `modelos_documentos/${id}_${Date.now()}_${file.name}`);
+        await window.uploadBytes(fileRef, file);
+        url = await window.getDownloadURL(fileRef);
+      } catch (e) {
+        alert('Não foi possível subir o arquivo: ' + e.message);
+        inputEl.value = '';
+        return;
+      }
+    }
+
+    await window.__setDoc(window.__doc(window.__db, 'config', 'modelos_documentos'), { [id]: { url, nome } }, { merge: true });
+    docsModelosData[id] = { url, nome };
+    renderDocsMenu();
+    inputEl.value = '';
+  };
+
+  window.__excluirDocModelo = async function (id) {
+    if (!confirm('Excluir este arquivo-modelo?')) return;
+    await window.__setDoc(window.__doc(window.__db, 'config', 'modelos_documentos'), { [id]: { url: null, nome: null } }, { merge: true });
+    docsModelosData[id] = { url: null, nome: null };
+    renderDocsMenu();
+  };
+</script>
+
 <script>
 const STEPS = [
-  { id:'procuracao', label:'Enviar modelo de procuração ao cliente',           section:'Documentação inicial', email:'procuracao' },
-  { id:'radar',      label:'Enviar passo a passo vinculação no Radar',          section:'Documentação inicial', email:'radar' },
-  { id:'dados',      label:'Enviar link do Formulário de Dados Iniciais',       section:'Documentação inicial', email:'dados' },
-  { id:'ibroker',    label:'Cadastrar cliente no sistema I-Broker',             section:'Sistemas internos',    email:null },
-  { id:'apm',        label:'Solicitar cadastro na APM Terminals (Scanner/Levante)', section:'Sistemas internos', email:'apm', urgent:true },
-  { id:'siscomex',   label:'Enviar passo a passo Siscomex SEFAZ-CE',           section:'Ceará',               email:'siscomex', ceOnly:true },
-  { id:'financeiro', label:'Solicitar ao financeiro cadastro nos CPFs dos despachantes', section:'Financeiro', email:'financeiro', conditional:true },
+  { id:'procuracao', label:'Enviar modelo de procuração ao cliente',           section:'Documentação inicial', email:'procuracao', resp:'cliente' },
+  { id:'radar',      label:'Enviar passo a passo vinculação no Radar',          section:'Documentação inicial', email:'radar', resp:'cliente' },
+  { id:'dados',      label:'Enviar link do Formulário de Dados Iniciais',       section:'Documentação inicial', email:'dados', resp:'cliente' },
+  { id:'siscomex',   label:'Enviar passo a passo Siscomex SEFAZ-CE',           section:'Documentação inicial', email:'siscomex', ceOnly:true, resp:'cliente' },
+  { id:'ibroker',    label:'Cadastrar cliente no sistema I-Broker',             section:'Sistemas internos',    email:null, resp:'agil' },
+  { id:'apm',        label:'Solicitar cadastro na APM Terminals (Scanner/Levante)', section:'Sistemas internos', email:'apm', urgent:true, resp:'agil' },
+  { id:'financeiro', label:'Solicitar ao financeiro cadastro nos CPFs dos despachantes', section:'Financeiro', email:'financeiro', conditional:true, resp:'agil' },
 ];
+
+const RESP_LABEL = { cliente: '🧑‍💼 Responsabilidade do Cliente', agil: '🏢 Responsabilidade Ágil' };
 
 const EMAILS = {
   procuracao: c => `Assunto: Procuração — ${c.nome}\n\nPrezado(a) cliente,\n\nSegue em anexo o nosso modelo de procuração para que possam providenciar a assinatura e nos enviar o documento original ou digitalizado.\n\nAtenciosamente,\n${c.resp || 'Equipe Ágil Aduaneira'}\n(85) 3046-3003 | comercial@agiladuaneira.com.br`,
@@ -543,17 +773,22 @@ function renderClients() {
     if (pend === 0 && keys.length > 0) comp++;
     const pct = keys.length ? Math.round(done / keys.length * 100) : 0;
 
-    // Agrupar por seção
-    const sections = {};
+    // Agrupar por responsável (Cliente / Ágil) e, dentro disso, por seção
+    const grupos = { cliente: {}, agil: {} };
     STEPS.forEach(s => {
       if (c.steps[s.id] !== undefined) {
-        if (!sections[s.section]) sections[s.section] = [];
-        sections[s.section].push(s);
+        const g = grupos[s.resp] || (grupos[s.resp] = {});
+        if (!g[s.section]) g[s.section] = [];
+        g[s.section].push(s);
       }
     });
 
     let stepsHTML = '';
-    Object.entries(sections).forEach(([sec, steps]) => {
+    ['cliente', 'agil'].forEach(resp => {
+      const sections = grupos[resp];
+      if (!sections || !Object.keys(sections).length) return;
+      stepsHTML += `<div class="resp-group-label">${RESP_LABEL[resp]}</div>`;
+      Object.entries(sections).forEach(([sec, steps]) => {
       stepsHTML += `<div class="section-label">${sec}</div>`;
       steps.forEach(s => {
         const isDone = c.steps[s.id];
@@ -587,6 +822,7 @@ function renderClients() {
               ${emailContent}
             </div>
           </div>`;
+        });
       });
     });
 
@@ -644,6 +880,15 @@ function copyEmail(key, btn) {
   navigator.clipboard.writeText(box.innerText).then(() => {
     btn.textContent = '✓ Copiado!';
     setTimeout(() => btn.textContent = '📋 Copiar e-mail', 1500);
+  });
+}
+
+function copiarLinkFormulario(btn) {
+  const link = 'https://agil-aduaneira.github.io/sistema-onboarding/formulario-cliente.html';
+  navigator.clipboard.writeText(link).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✓ Link copiado!';
+    setTimeout(() => btn.textContent = original, 1500);
   });
 }
 

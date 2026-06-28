@@ -292,6 +292,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     <div class="icon">✅</div>
     <h2>Formulário enviado com sucesso!</h2>
     <p>Obrigado por preencher os dados. Nossa equipe entrará em contato em breve para os próximos passos do onboarding.</p>
+    <button type="button" class="btn-submit" style="margin-top:1.5rem;" onclick="fecharFormulario()">Fechar</button>
   </div>
 
 </div>
@@ -357,6 +358,13 @@ async function enviarForm() {
     erro.textContent = 'Não foi possível enviar o formulário. Tente novamente em alguns instantes.';
     erro.style.display = 'block';
   }
+}
+
+function fecharFormulario() {
+  window.close();
+  // Se a aba não foi aberta via script, o navegador bloqueia window.close().
+  // Nesse caso, recarrega a página para permitir um novo preenchimento.
+  setTimeout(() => { window.location.reload(); }, 300);
 }
 </script>
 
