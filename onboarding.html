@@ -210,6 +210,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
 /* Checklist */
 .checklist { display: none; border-top: 1px solid #eef0f5; padding-top: 1rem; margin-top: 1rem; }
 .checklist.open { display: block; }
+.finalize-bar { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #eef0f5; text-align: right; }
 .section-label {
   font-size: 10.5px; font-weight: 700; color: #999;
   text-transform: uppercase; letter-spacing: .07em;
@@ -232,6 +233,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
 }
 .step-check.done { background: #185FA5; border-color: #185FA5; color: #fff; font-size: 12px; }
 .step-check:hover:not(.done) { border-color: #185FA5; }
+.sel-email-check { width: 15px; height: 15px; margin-top: 3px; accent-color: #185FA5; cursor: pointer; flex-shrink: 0; }
+.combo-email-bar { padding: 10px 0 4px; text-align: right; }
 .step-content { flex: 1; }
 .step-title { font-size: 13px; color: #1A1D2E; line-height: 1.4; }
 .step-title.done { text-decoration: line-through; color: #aaa; }
@@ -382,7 +385,13 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       <div class="form-title">Cadastrar novo cliente</div>
       <div class="form-row">
         <div class="field"><label>Razão social</label><input type="text" id="nc-nome" placeholder="Empresa ABC Ltda."></div>
-        <div class="field"><label>CNPJ</label><input type="text" id="nc-cnpj" placeholder="00.000.000/0001-00"></div>
+        <div class="field">
+          <label>CNPJ</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="nc-cnpj" placeholder="00.000.000/0001-00" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCnpj();}">
+            <button type="button" class="btn-cancel" style="white-space:nowrap;" onclick="buscarCnpj()" id="nc-cnpj-btn">🔍 Buscar</button>
+          </div>
+        </div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -519,12 +528,45 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     await updateDoc(doc(db, 'respostas_dados_iniciais', id), { status: marcarComoTratado ? 'tratado' : 'novo' });
   };
 
-  window.__baixarPdfResposta = function (id) {
+  let carlitoCache = null;
+  async function carregarFonteCarlito() {
+    if (carlitoCache) return carlitoCache;
+    const bufToBase64 = (buf) => {
+      let binary = '';
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    };
+    const [regularBuf, boldBuf] = await Promise.all([
+      fetch('fonts/Carlito-Regular.ttf').then(r => r.arrayBuffer()),
+      fetch('fonts/Carlito-Bold.ttf').then(r => r.arrayBuffer()),
+    ]);
+    carlitoCache = { regular: bufToBase64(regularBuf), bold: bufToBase64(boldBuf) };
+    return carlitoCache;
+  }
+
+  window.__baixarPdfResposta = async function (id) {
     const d = (window.__respostasCache || {})[id];
     if (!d || !window.jspdf) { alert('Não foi possível gerar o PDF.'); return; }
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+
+    let fonte = 'helvetica';
+    try {
+      const carlito = await carregarFonteCarlito();
+      pdf.addFileToVFS('Carlito-Regular.ttf', carlito.regular);
+      pdf.addFont('Carlito-Regular.ttf', 'Carlito', 'normal');
+      pdf.addFileToVFS('Carlito-Bold.ttf', carlito.bold);
+      pdf.addFont('Carlito-Bold.ttf', 'Carlito', 'bold');
+      fonte = 'Carlito';
+    } catch (e) {
+      console.warn('Não foi possível carregar a fonte Carlito, usando Helvetica:', e.message);
+    }
+
     const margin = 50;
     const pageWidth = pdf.internal.pageSize.getWidth();
     let y = 60;
@@ -559,19 +601,19 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       ['Observações', d.observacoes],
     ];
 
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(14);
+    pdf.setFont(fonte, 'bold');
+    pdf.setFontSize(15);
     pdf.text('Ágil Soluções Aduaneiras', margin, y);
     y += 18;
     pdf.setFontSize(11);
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(fonte, 'normal');
     pdf.text('Cadastro Inicial — Dados do Cliente', margin, y);
     y += 28;
 
     linhas.forEach(([label, valor]) => {
       if (label === '') { y += 8; return; }
       if (valor === null && label) {
-        pdf.setFont('helvetica', 'bold');
+        pdf.setFont(fonte, 'bold');
         pdf.setFontSize(12);
         if (y > 760) { pdf.addPage(); y = 60; }
         pdf.text(label, margin, y);
@@ -579,16 +621,17 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
         return;
       }
       if (y > 770) { pdf.addPage(); y = 60; }
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(10);
+      pdf.setFont(fonte, 'bold');
+      pdf.setFontSize(11);
       pdf.text(label + ':', margin, y);
-      y += 13;
-      pdf.setFont('helvetica', 'normal');
+      y += 14;
+      pdf.setFont(fonte, 'normal');
+      pdf.setFontSize(11);
       const texto = (valor === undefined || valor === null || valor === '') ? '—' : String(valor);
       const linhasTexto = pdf.splitTextToSize(texto, pageWidth - margin * 2);
       if (y > 770) { pdf.addPage(); y = 60; }
       pdf.text(linhasTexto, margin, y);
-      y += linhasTexto.length * 12 + 8;
+      y += linhasTexto.length * 13 + 8;
     });
 
     pdf.save(`Dados_Iniciais_${(d.nome || 'cliente').replace(/[^a-z0-9]+/gi, '_')}.pdf`);
@@ -603,7 +646,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
   const DOCS_MODELOS = [
     { id: 'procuracao', titulo: '📄 Modelo de Procuração',                                portal: null },
     { id: 'radar',      titulo: '📡 Passo a Passo Vinculação Radar',                       portal: 'https://portalunico.siscomex.gov.br/portal/' },
-    { id: 'siscomex',   titulo: '🧾 Passo a Passo Inclusão Representante Siscomex',         portal: 'https://servicos.sefaz.ce.gov.br/internet/acessoseguro/servicosenha/logarusuario/login.asp' },
+    { id: 'siscomex',   titulo: '🧾 Passo a Passo Inclusão Representante  Siscoex',         portal: 'https://servicos.sefaz.ce.gov.br/internet/acessoseguro/servicosenha/logarusuario/login.asp' },
     { id: 'dte',        titulo: '📨 Passo a Passo Inclusão Representante DTE Sefaz-CE',     portal: 'https://portal-dte.sefaz.ce.gov.br/#/index' },
     { id: 'ecac',       titulo: '🏛️ Passo a Passo Inclusão Representante Ecac',             portal: 'https://cav.receita.fazenda.gov.br/autenticacao/login' },
   ];
@@ -738,6 +781,31 @@ function initials(name) {
   return name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
 }
 
+async function buscarCnpj() {
+  const cnpjInput = document.getElementById('nc-cnpj');
+  const digits = cnpjInput.value.replace(/\D/g, '');
+  if (digits.length !== 14) { alert('Informe um CNPJ válido (14 dígitos).'); return; }
+
+  const btn = document.getElementById('nc-cnpj-btn');
+  const original = btn.textContent;
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+    if (!res.ok) throw new Error('CNPJ não encontrado');
+    const data = await res.json();
+    document.getElementById('nc-nome').value = data.razao_social || data.nome_fantasia || '';
+    document.getElementById('nc-estado').value = data.uf === 'CE' ? 'CE' : 'outro';
+    cnpjInput.value = digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  } catch (e) {
+    alert('Não foi possível encontrar dados para esse CNPJ. Preencha manualmente.');
+  } finally {
+    btn.textContent = original;
+    btn.disabled = false;
+  }
+}
+
 function addClient() {
   const nome   = document.getElementById('nc-nome').value.trim();
   const cnpj   = document.getElementById('nc-cnpj').value.trim();
@@ -745,7 +813,7 @@ function addClient() {
   const resp   = document.getElementById('nc-resp').value.trim();
   if (!nome) { alert('Informe a razão social.'); return; }
 
-  const client = { id: Date.now(), nome, cnpj, estado, resp, steps: {}, open: true };
+  const client = { id: Date.now(), nome, cnpj, estado, resp, steps: {}, open: true, emailSel: {} };
   STEPS.forEach(s => { if (!s.ceOnly || estado === 'CE') client.steps[s.id] = false; });
   clients.push(client);
 
@@ -807,9 +875,13 @@ function renderClients() {
             <div class="email-body">${EMAILS[s.email](c)}</div>
             <button class="copy-email-btn" onclick="copyEmail('${c.id}-${s.id}', this)">📋 Copiar e-mail</button>
           </div>` : '';
+        const selCheckbox = (resp === 'cliente' && s.email)
+          ? `<input type="checkbox" class="sel-email-check" title="Selecionar para e-mail combinado" ${c.emailSel[s.id] ? 'checked' : ''} onchange="toggleEmailSel('${c.id}','${s.id}', this.checked)">`
+          : '';
 
         stepsHTML += `
           <div class="step">
+            ${selCheckbox}
             <div class="step-check ${isDone?'done':''}" onclick="toggleStep('${c.id}','${s.id}')">
               ${isDone ? '✓' : ''}
             </div>
@@ -824,6 +896,12 @@ function renderClients() {
           </div>`;
         });
       });
+      if (resp === 'cliente') {
+        stepsHTML += `
+          <div class="combo-email-bar">
+            <button class="action-btn" onclick="enviarEmailCombinado('${c.id}')">📧 Montar e-mail combinado das etapas marcadas</button>
+          </div>`;
+      }
     });
 
     const card = document.createElement('div');
@@ -834,7 +912,7 @@ function renderClients() {
         <div class="client-meta">
           <div class="avatar">${initials(c.nome)}</div>
           <div>
-            <div class="client-name">${c.nome}</div>
+            <div class="client-name">${c.nome} ${c.finalizado ? '<span class="resp-tag-novo" style="background:#2E7D32;">FINALIZADO</span>' : ''}</div>
             <div class="client-sub">${c.cnpj||'CNPJ não informado'} · ${c.estado==='CE'?'Ceará':'Outro estado'} · ${c.resp||'—'}</div>
           </div>
         </div>
@@ -844,7 +922,14 @@ function renderClients() {
           <div class="chevron ${c.open?'open':''}">⌄</div>
         </div>
       </div>
-      <div class="checklist ${c.open?'open':''}">${stepsHTML}</div>
+      <div class="checklist ${c.open?'open':''}">
+        ${stepsHTML}
+        <div class="finalize-bar">
+          ${c.finalizado
+            ? `<button class="btn-cancel" onclick="event.stopPropagation();toggleFinalizado('${c.id}')">↺ Reabrir onboarding</button>`
+            : `<button class="btn-primary" onclick="event.stopPropagation();toggleFinalizado('${c.id}')">✅ Finalizar onboarding</button>`}
+        </div>
+      </div>
     `;
     list.appendChild(card);
   });
@@ -866,6 +951,43 @@ function toggleStep(cid, sid) {
 function markDone(cid, sid) {
   const c = clients.find(x => x.id == cid);
   if (c) { c.steps[sid] = true; renderClients(); }
+}
+function toggleFinalizado(cid) {
+  const c = clients.find(x => x.id == cid);
+  if (c) { c.finalizado = !c.finalizado; renderClients(); }
+}
+function toggleEmailSel(cid, sid, checked) {
+  const c = clients.find(x => x.id == cid);
+  if (c) c.emailSel[sid] = checked;
+}
+function enviarEmailCombinado(cid) {
+  const c = clients.find(x => x.id == cid);
+  if (!c) return;
+  const selecionados = STEPS.filter(s => s.resp === 'cliente' && s.email && c.emailSel[s.id]);
+  if (!selecionados.length) { alert('Marque ao menos uma etapa do Cliente para montar o e-mail combinado.'); return; }
+
+  const corpo = selecionados.map(s => EMAILS[s.email](c)).join('\n\n— — — — —\n\n');
+  const modalId = 'combo-modal-' + c.id;
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'email-modal';
+    document.body.appendChild(modal);
+    modal.style.position = 'fixed';
+    modal.style.top = '50%'; modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%,-50%)';
+    modal.style.maxWidth = '560px'; modal.style.width = '90%'; modal.style.zIndex = '9999';
+  }
+  modal.innerHTML = `
+    <div class="email-header">
+      <span>E-mail combinado — ${c.nome}</span>
+      <button class="email-close" onclick="document.getElementById('${modalId}').remove()">✕</button>
+    </div>
+    <div class="email-body">${corpo}</div>
+    <button class="copy-email-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.innerText).then(()=>{this.textContent='✓ Copiado!';setTimeout(()=>this.textContent='📋 Copiar e-mail combinado',1500);})">📋 Copiar e-mail combinado</button>
+  `;
+  modal.classList.add('open');
 }
 function toggleEmail(key) {
   const el = document.getElementById('em-' + key);
