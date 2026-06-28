@@ -600,15 +600,18 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
 
     function desenharTimbrado() {
       if (!imagens) return;
-      pdf.addImage(imagens.logo, 'PNG', margin, 28, 130, 34.3);
-      pdf.addImage(imagens.linha, 'PNG', margin, pageHeight - 62, pageWidth - margin * 2, 8);
+      const logoW = 130, logoH = 34.3;
+      pdf.addImage(imagens.logo, 'PNG', (pageWidth - logoW) / 2, 28, logoW, logoH);
+
+      const linhaW = 320;
+      pdf.addImage(imagens.linha, 'PNG', (pageWidth - linhaW) / 2, pageHeight - 62, linhaW, 8);
       pdf.setFont(fonte, 'bold');
       pdf.setFontSize(8);
       pdf.setTextColor(60, 60, 60);
-      pdf.text('Ágil Soluções Aduaneiras Ltda.', margin, pageHeight - 48);
+      pdf.text('Ágil Soluções Aduaneiras Ltda.', pageWidth / 2, pageHeight - 48, { align: 'center' });
       pdf.setFont(fonte, 'normal');
-      pdf.text('Av. Washington Soares 3663 – Salas 1104 a 1106 – Torre 2 – Empresarial WSTC – 60.811-341 – Edson Queiroz – Fortaleza/CE', margin, pageHeight - 38);
-      pdf.text('Fone: (85) 3046-3003 | comercial@agiladuaneira.com.br | www.agiladuaneira.com.br', margin, pageHeight - 28);
+      pdf.text('Av. Washington Soares 3663 – Salas 1104 a 1106 – Torre 2 – Empresarial WSTC – 60.811-341 – Edson Queiroz – Fortaleza/CE', pageWidth / 2, pageHeight - 38, { align: 'center' });
+      pdf.text('Fone: (85) 3046-3003 | comercial@agiladuaneira.com.br | www.agiladuaneira.com.br', pageWidth / 2, pageHeight - 28, { align: 'center' });
       pdf.setTextColor(0, 0, 0);
     }
 
