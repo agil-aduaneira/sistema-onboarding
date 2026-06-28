@@ -548,6 +548,26 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
     return carlitoCache;
   }
 
+  let imagensTimbradoCache = null;
+  async function carregarImagensTimbrado() {
+    if (imagensTimbradoCache) return imagensTimbradoCache;
+    const bufToBase64 = (buf) => {
+      let binary = '';
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return 'data:image/png;base64,' + btoa(binary);
+    };
+    const [logoBuf, linhaBuf] = await Promise.all([
+      fetch('logo-agil.png').then(r => r.arrayBuffer()),
+      fetch('rodape-linha.png').then(r => r.arrayBuffer()),
+    ]);
+    imagensTimbradoCache = { logo: bufToBase64(logoBuf), linha: bufToBase64(linhaBuf) };
+    return imagensTimbradoCache;
+  }
+
   window.__baixarPdfResposta = async function (id) {
     const d = (window.__respostasCache || {})[id];
     if (!d || !window.jspdf) { alert('Não foi possível gerar o PDF.'); return; }
@@ -567,9 +587,39 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       console.warn('Não foi possível carregar a fonte Carlito, usando Helvetica:', e.message);
     }
 
+    let imagens = null;
+    try {
+      imagens = await carregarImagensTimbrado();
+    } catch (e) {
+      console.warn('Não foi possível carregar o papel timbrado:', e.message);
+    }
+
     const margin = 50;
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    let y = 60;
+    const pageWidth  = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    function desenharTimbrado() {
+      if (!imagens) return;
+      pdf.addImage(imagens.logo, 'PNG', margin, 28, 130, 34.3);
+      pdf.addImage(imagens.linha, 'PNG', margin, pageHeight - 62, pageWidth - margin * 2, 8);
+      pdf.setFont(fonte, 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(60, 60, 60);
+      pdf.text('Ágil Soluções Aduaneiras Ltda.', margin, pageHeight - 48);
+      pdf.setFont(fonte, 'normal');
+      pdf.text('Av. Washington Soares 3663 – Salas 1104 a 1106 – Torre 2 – Empresarial WSTC – 60.811-341 – Edson Queiroz – Fortaleza/CE', margin, pageHeight - 38);
+      pdf.text('Fone: (85) 3046-3003 | comercial@agiladuaneira.com.br | www.agiladuaneira.com.br', margin, pageHeight - 28);
+      pdf.setTextColor(0, 0, 0);
+    }
+
+    function novaPagina() {
+      pdf.addPage();
+      desenharTimbrado();
+      return imagens ? 100 : 60;
+    }
+
+    desenharTimbrado();
+    let y = imagens ? 100 : 60;
 
     const linhas = [
       ['Cadastro Inicial — Dados do Cliente', null],
@@ -601,12 +651,14 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       ['Observações', d.observacoes],
     ];
 
+    if (!imagens) {
+      pdf.setFont(fonte, 'bold');
+      pdf.setFontSize(15);
+      pdf.text('Ágil Soluções Aduaneiras', margin, y);
+      y += 18;
+    }
+    pdf.setFontSize(13);
     pdf.setFont(fonte, 'bold');
-    pdf.setFontSize(15);
-    pdf.text('Ágil Soluções Aduaneiras', margin, y);
-    y += 18;
-    pdf.setFontSize(11);
-    pdf.setFont(fonte, 'normal');
     pdf.text('Cadastro Inicial — Dados do Cliente', margin, y);
     y += 28;
 
@@ -615,12 +667,12 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       if (valor === null && label) {
         pdf.setFont(fonte, 'bold');
         pdf.setFontSize(12);
-        if (y > 760) { pdf.addPage(); y = 60; }
+        if (y > 740) y = novaPagina();
         pdf.text(label, margin, y);
         y += 18;
         return;
       }
-      if (y > 770) { pdf.addPage(); y = 60; }
+      if (y > 750) y = novaPagina();
       pdf.setFont(fonte, 'bold');
       pdf.setFontSize(11);
       pdf.text(label + ':', margin, y);
@@ -629,7 +681,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       pdf.setFontSize(11);
       const texto = (valor === undefined || valor === null || valor === '') ? '—' : String(valor);
       const linhasTexto = pdf.splitTextToSize(texto, pageWidth - margin * 2);
-      if (y > 770) { pdf.addPage(); y = 60; }
+      if (y > 750) y = novaPagina();
       pdf.text(linhasTexto, margin, y);
       y += linhasTexto.length * 13 + 8;
     });
