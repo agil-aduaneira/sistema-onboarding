@@ -561,7 +561,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f2f4f7; m
       return 'data:image/png;base64,' + btoa(binary);
     };
     const [logoBuf, linhaBuf] = await Promise.all([
-      fetch('logo-agil.png').then(r => r.arrayBuffer()),
+      fetch('logo-agil-completo.png').then(r => r.arrayBuffer()),
       fetch('rodape-linha.png').then(r => r.arrayBuffer()),
     ]);
     imagensTimbradoCache = { logo: bufToBase64(logoBuf), linha: bufToBase64(linhaBuf) };
