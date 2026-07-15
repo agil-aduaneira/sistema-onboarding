@@ -105,6 +105,8 @@
   .bi-edit:hover  { background: var(--azul-medio); color: #fff; }
   .bi-copy  { background: #F0FDF4; color: var(--verde-status); }
   .bi-copy:hover  { background: var(--verde-status); color: #fff; }
+  .bi-comp  { background: #EFF6FF; color: #1D4ED8; }
+  .bi-comp:hover  { background: #1D4ED8; color: #fff; }
   .bi-del   { background: #FEE2E2; color: var(--vermelho); }
   .bi-del:hover   { background: var(--vermelho); color: #fff; }
 
@@ -291,6 +293,10 @@
         </div>
       </div>
       <div class="cg"><label>Observações</label><textarea id="f-obs" placeholder="Histórico, condições, observações gerais..."></textarea></div>
+      <div class="cg">
+        <label>Complementares (despachantes para DUIMP / Procuração)</label>
+        <textarea id="f-comp" placeholder="Cole aqui os complementares dos despachantes do parceiro..." style="min-height:120px;font-size:.82rem;line-height:1.5"></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-cancel btn-sm" onclick="fechar('ov-parceiro')">Cancelar</button>
@@ -464,6 +470,7 @@ function render() {
           <button class="btn-icon bi-hist" title="Histórico de Serviços" onclick="abrirHist(${p.id})">📁</button>
           <button class="btn-icon bi-edit" title="Editar" onclick="editarParceiro(${p.id})">✏️</button>
           <button class="btn-icon bi-copy" title="Copiar contato" onclick="copiar(${p.id})">📋</button>
+          <button class="btn-icon bi-comp" title="Copiar complementares" onclick="copiarComplementares(${p.id})" ${p.complementares?'':'style="opacity:.35;cursor:default"'}>👥</button>
           <button class="btn-icon bi-del"  title="Excluir" onclick="excluir(${p.id})">🗑️</button>
         </div>
       </td>
@@ -509,6 +516,7 @@ function abrirModalParceiro(dados=null) {
   document.getElementById('f-empresa').value = dados?.empresa ||'';
   document.getElementById('f-status').value  = dados?.status  ||'Ativo';
   document.getElementById('f-obs').value     = dados?.obs     ||'';
+  document.getElementById('f-comp').value    = dados?.complementares||'';
   setAv(dados?.avaliacao||0);
   abrir('ov-parceiro');
 }
@@ -527,7 +535,8 @@ function salvarParceiro() {
     fone:document.getElementById('f-fone').value.trim(),
     empresa:document.getElementById('f-empresa').value.trim(),
     status:document.getElementById('f-status').value,
-    avaliacao:avSel, obs:document.getElementById('f-obs').value.trim()
+    avaliacao:avSel, obs:document.getElementById('f-obs').value.trim(),
+    complementares:document.getElementById('f-comp').value.trim()
   };
   if (editId) { const i=parceiros.findIndex(p=>p.id===editId); if(i!==-1) parceiros[i]=obj; toast('✅ Parceiro atualizado!'); }
   else { parceiros.push(obj); toast('✅ Parceiro cadastrado!'); }
@@ -545,6 +554,11 @@ function copiar(id) {
   const p=parceiros.find(p=>p.id===id); if(!p) return;
   const txt=[`Parceiro: ${p.nome}`,p.empresa?`Empresa: ${p.empresa}`:null,`Estado: ${p.estado}${p.cidade?' – '+p.cidade:''}`,`Nicho: ${p.nicho}`,p.email?`E-mail: ${p.email}`:null,p.fone?`Fone: ${p.fone}`:null].filter(Boolean).join('\n');
   navigator.clipboard.writeText(txt).then(()=>toast('📋 Contato copiado!'));
+}
+function copiarComplementares(id) {
+  const p=parceiros.find(p=>p.id===id); if(!p) return;
+  if (!p.complementares) { toast('⚠️ Este parceiro não tem complementares cadastrados.'); return; }
+  navigator.clipboard.writeText(p.complementares).then(()=>toast('👥 Complementares copiados!'));
 }
 
 // HISTÓRICO DE SERVIÇOS
