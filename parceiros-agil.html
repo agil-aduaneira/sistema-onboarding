@@ -151,6 +151,11 @@
   .hist-email { font-size: .78rem; color: var(--cinza-sub); margin-top: 4px; background: #fff; border: 1px solid var(--cinza-borda); border-radius: 6px; padding: 6px 10px; white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow-y: auto; }
   .hist-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--cinza-borda); cursor: pointer; font-size: .85rem; }
   .hist-del:hover { color: var(--vermelho); }
+  .hist-edit { position: absolute; top: 8px; right: 28px; background: none; border: none; color: var(--cinza-borda); cursor: pointer; font-size: .82rem; }
+  .hist-edit:hover { color: var(--azul-medio); }
+  .hist-edit-form { background: #fff; border: 1px solid var(--azul-medio); border-radius: 8px; padding: 10px 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .hist-edit-form .trio { display: flex; gap: 8px; }
+  .hist-edit-form input, .hist-edit-form textarea { padding: 6px 9px; border: 1px solid var(--cinza-borda); border-radius: 6px; font-size: .82rem; width: 100%; }
   .hist-vazio { text-align: center; color: var(--cinza-sub); font-size: .84rem; padding: 24px 0; }
   .hist-sep { border: none; border-top: 1px solid var(--cinza-borda); margin: 4px 0; }
 
@@ -586,7 +591,8 @@ function renderHist() {
   const el=document.getElementById('hist-lista');
   if (!lista.length) { el.innerHTML='<div class="hist-vazio">📭 Nenhum serviço registrado ainda.<br>Use o formulário acima para registrar o primeiro.</div>'; return; }
   el.innerHTML=lista.map((s,i)=>`
-    <div class="hist-item">
+    <div class="hist-item" id="hitem-${s.ts}">
+      <button class="hist-edit" onclick="toggleEditServico(${s.ts})" title="Editar">✏️</button>
       <button class="hist-del" onclick="delServico(${s.ts})" title="Remover">✕</button>
       <div class="hist-item-topo">
         <div>
@@ -597,6 +603,18 @@ function renderHist() {
         <div class="hist-data">${formatarData(s.data)}</div>
       </div>
       ${s.email ? `<div class="hist-email">${s.email}</div>` : ''}
+      <div class="hist-edit-form" id="hedit-${s.ts}" style="display:none">
+        <div class="trio">
+          <div style="flex:1"><label style="font-size:.72rem;font-weight:600;color:var(--cinza-sub)">Com MAPA (R$)</label><input id="he-mapa-${s.ts}" type="number" step="0.01" value="${s.valorMapa??''}"></div>
+          <div style="flex:1"><label style="font-size:.72rem;font-weight:600;color:var(--cinza-sub)">Sem MAPA (R$)</label><input id="he-semapa-${s.ts}" type="number" step="0.01" value="${s.valorSemapa??''}"></div>
+          <div style="flex:1"><label style="font-size:.72rem;font-weight:600;color:var(--cinza-sub)">Data</label><input id="he-data-${s.ts}" type="date" value="${s.data}"></div>
+        </div>
+        <textarea id="he-email-${s.ts}" style="min-height:60px;font-size:.8rem" placeholder="Resumo / observações...">${s.email||''}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px">
+          <button class="btn btn-cancel btn-sm" onclick="toggleEditServico(${s.ts})">Cancelar</button>
+          <button class="btn btn-primario btn-sm" onclick="salvarEdicaoServico(${s.ts})">💾 Salvar</button>
+        </div>
+      </div>
     </div>
   `).join('');
 }
@@ -618,6 +636,25 @@ function delServico(ts) {
   if (!confirm('Remover este registro?')) return;
   historico[histId]=historico[histId].filter(s=>s.ts!==ts);
   save(); renderHist(); render();
+}
+function toggleEditServico(ts) {
+  const el = document.getElementById(`hedit-${ts}`);
+  el.style.display = el.style.display==='none' ? 'flex' : 'none';
+  el.style.flexDirection = 'column';
+}
+function salvarEdicaoServico(ts) {
+  const idx = historico[histId].findIndex(s=>s.ts===ts);
+  if (idx===-1) return;
+  const mapa   = document.getElementById(`he-mapa-${ts}`).value;
+  const semapa = document.getElementById(`he-semapa-${ts}`).value;
+  const data   = document.getElementById(`he-data-${ts}`).value;
+  const email  = document.getElementById(`he-email-${ts}`).value.trim();
+  historico[histId][idx] = { ...historico[histId][idx],
+    valorMapa: mapa?parseFloat(mapa):null,
+    valorSemapa: semapa?parseFloat(semapa):null,
+    data, email
+  };
+  save(); renderHist(); render(); toast('✅ Registro atualizado!');
 }
 function formatarData(d) {
   if (!d) return ''; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`;
