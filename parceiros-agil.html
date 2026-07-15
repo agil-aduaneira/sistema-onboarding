@@ -325,6 +325,10 @@
       <!-- FORMULÁRIO NOVO SERVIÇO -->
       <div class="novo-serv">
         <h4>📝 Registrar novo serviço fechado</h4>
+        <div class="duo">
+          <div class="cg"><label>Cliente</label><input id="h-cliente" placeholder="Nome do cliente / empresa"></div>
+          <div class="cg"><label>Serviço</label><input id="h-servico" placeholder="Ex.: Importação marítima, DI, etc."></div>
+        </div>
         <div class="trio">
           <div class="cg"><label>Valor com MAPA (R$)</label><input id="h-valor-mapa" type="number" step="0.01" placeholder="0,00"></div>
           <div class="cg"><label>Valor sem MAPA (R$)</label><input id="h-valor-semapa" type="number" step="0.01" placeholder="0,00"></div>
@@ -579,6 +583,8 @@ function abrirHist(id) {
   const p=parceiros.find(p=>p.id===id);
   document.getElementById('hist-nome').textContent=`Histórico – ${p.nome}`;
   document.getElementById('hist-sub').textContent=`${p.estado}${p.cidade?' · '+p.cidade:''} · ${p.nicho}`;
+  document.getElementById('h-cliente').value='';
+  document.getElementById('h-servico').value='';
   document.getElementById('h-valor-mapa').value='';
   document.getElementById('h-valor-semapa').value='';
   document.getElementById('h-data').value=new Date().toISOString().slice(0,10);
@@ -596,6 +602,8 @@ function renderHist() {
       <button class="hist-del" onclick="delServico(${s.ts})" title="Remover">✕</button>
       <div class="hist-item-topo">
         <div>
+          ${s.cliente ? `<div style="font-size:.78rem;font-weight:600;color:var(--azul-agil)">👤 ${s.cliente}</div>` : ''}
+          ${s.servico ? `<div style="font-size:.75rem;color:var(--cinza-sub);margin-bottom:4px">🔧 ${s.servico}</div>` : ''}
           ${s.valorMapa!=null ? `<div class="hist-valor">🗺️ Com MAPA: R$ ${parseFloat(s.valorMapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
           ${s.valorSemapa!=null ? `<div class="hist-valor" style="color:#1D4ED8">📦 Sem MAPA: R$ ${parseFloat(s.valorSemapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
           ${(s.valor!=null&&s.valorMapa==null&&s.valorSemapa==null) ? `<div class="hist-valor">R$ ${parseFloat(s.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
@@ -619,14 +627,18 @@ function renderHist() {
   `).join('');
 }
 function salvarServico() {
+  const cliente  = document.getElementById('h-cliente').value.trim();
+  const servico  = document.getElementById('h-servico').value.trim();
   const valorMapa   = document.getElementById('h-valor-mapa').value;
   const valorSemapa = document.getElementById('h-valor-semapa').value;
   const data  = document.getElementById('h-data').value;
   const email = document.getElementById('h-email').value.trim();
   if ((!valorMapa && !valorSemapa) || !data) { toast('⚠️ Informe ao menos um Valor e a Data!'); return; }
   if (!historico[histId]) historico[histId]=[];
-  historico[histId].push({ ts:Date.now(), valorMapa:valorMapa?parseFloat(valorMapa):null, valorSemapa:valorSemapa?parseFloat(valorSemapa):null, data, email });
+  historico[histId].push({ ts:Date.now(), cliente, servico, valorMapa:valorMapa?parseFloat(valorMapa):null, valorSemapa:valorSemapa?parseFloat(valorSemapa):null, data, email });
   save(); renderHist(); render();
+  document.getElementById('h-cliente').value='';
+  document.getElementById('h-servico').value='';
   document.getElementById('h-valor-mapa').value='';
   document.getElementById('h-valor-semapa').value='';
   document.getElementById('h-email').value='';
