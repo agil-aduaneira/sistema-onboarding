@@ -321,8 +321,8 @@
       <div class="novo-serv">
         <h4>📝 Registrar novo serviço fechado</h4>
         <div class="trio">
-          <div class="cg"><label>Nº do Processo / Ref.</label><input id="h-proc" placeholder="Ex.: DI-2025/001"></div>
-          <div class="cg"><label>Valor Fechado (R$)</label><input id="h-valor" type="number" step="0.01" placeholder="0,00"></div>
+          <div class="cg"><label>Valor com MAPA (R$)</label><input id="h-valor-mapa" type="number" step="0.01" placeholder="0,00"></div>
+          <div class="cg"><label>Valor sem MAPA (R$)</label><input id="h-valor-semapa" type="number" step="0.01" placeholder="0,00"></div>
           <div class="cg"><label>Data do Acordo</label><input id="h-data" type="date"></div>
         </div>
         <div class="cg"><label>Resumo do E-mail / Acordo</label>
@@ -372,7 +372,14 @@ function ultimoValor(id) {
   const h = historico[id];
   if (!h || !h.length) return null;
   const sorted = [...h].sort((a,b) => b.data.localeCompare(a.data));
-  return sorted[0].valor || null;
+  const s = sorted[0];
+  if (s.valorMapa!=null || s.valorSemapa!=null) {
+    const partes = [];
+    if (s.valorMapa!=null) partes.push(`🗺️ R$ ${parseFloat(s.valorMapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+    if (s.valorSemapa!=null) partes.push(`📦 R$ ${parseFloat(s.valorSemapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+    return partes.join(' / ');
+  }
+  return s.valor ? `R$ ${parseFloat(s.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : null;
 }
 
 function renderCards() {
@@ -439,7 +446,7 @@ function render() {
     const hist = historico[p.id] || [];
     const nServicos = hist.length;
     const valorCell = uv
-      ? `<div class="valor-tag">R$ ${parseFloat(uv).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      ? `<div class="valor-tag" style="font-size:.74rem">${uv}</div>
          <div style="font-size:.69rem;color:var(--cinza-sub)">${nServicos} serviço${nServicos!==1?'s':''}</div>`
       : `<span class="valor-vazio">—</span>`;
 
@@ -480,7 +487,7 @@ function render() {
 }
 
 function ordemCampo(p) {
-  if (ordCol==='ultimoValor') return parseFloat(ultimoValor(p.id)||0);
+  if (ordCol==='ultimoValor') { const h=(historico[p.id]||[]).sort((a,b)=>b.data.localeCompare(a.data)); return h.length?(h[0].valorMapa||h[0].valorSemapa||h[0].valor||0):0; }
   return p[ordCol] ?? '';
 }
 
@@ -567,8 +574,8 @@ function abrirHist(id) {
   const p=parceiros.find(p=>p.id===id);
   document.getElementById('hist-nome').textContent=`Histórico – ${p.nome}`;
   document.getElementById('hist-sub').textContent=`${p.estado}${p.cidade?' · '+p.cidade:''} · ${p.nicho}`;
-  document.getElementById('h-proc').value='';
-  document.getElementById('h-valor').value='';
+  document.getElementById('h-valor-mapa').value='';
+  document.getElementById('h-valor-semapa').value='';
   document.getElementById('h-data').value=new Date().toISOString().slice(0,10);
   document.getElementById('h-email').value='';
   renderHist();
@@ -583,8 +590,9 @@ function renderHist() {
       <button class="hist-del" onclick="delServico(${s.ts})" title="Remover">✕</button>
       <div class="hist-item-topo">
         <div>
-          <div class="hist-valor">R$ ${parseFloat(s.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-          ${s.proc ? `<div class="hist-processo">📂 ${s.proc}</div>` : ''}
+          ${s.valorMapa!=null ? `<div class="hist-valor">🗺️ Com MAPA: R$ ${parseFloat(s.valorMapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
+          ${s.valorSemapa!=null ? `<div class="hist-valor" style="color:#1D4ED8">📦 Sem MAPA: R$ ${parseFloat(s.valorSemapa).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
+          ${(s.valor!=null&&s.valorMapa==null&&s.valorSemapa==null) ? `<div class="hist-valor">R$ ${parseFloat(s.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : ''}
         </div>
         <div class="hist-data">${formatarData(s.data)}</div>
       </div>
@@ -593,16 +601,16 @@ function renderHist() {
   `).join('');
 }
 function salvarServico() {
-  const proc  = document.getElementById('h-proc').value.trim();
-  const valor = document.getElementById('h-valor').value;
+  const valorMapa   = document.getElementById('h-valor-mapa').value;
+  const valorSemapa = document.getElementById('h-valor-semapa').value;
   const data  = document.getElementById('h-data').value;
   const email = document.getElementById('h-email').value.trim();
-  if (!valor||!data) { toast('⚠️ Informe ao menos Valor e Data!'); return; }
+  if ((!valorMapa && !valorSemapa) || !data) { toast('⚠️ Informe ao menos um Valor e a Data!'); return; }
   if (!historico[histId]) historico[histId]=[];
-  historico[histId].push({ ts:Date.now(), proc, valor:parseFloat(valor), data, email });
+  historico[histId].push({ ts:Date.now(), valorMapa:valorMapa?parseFloat(valorMapa):null, valorSemapa:valorSemapa?parseFloat(valorSemapa):null, data, email });
   save(); renderHist(); render();
-  document.getElementById('h-proc').value='';
-  document.getElementById('h-valor').value='';
+  document.getElementById('h-valor-mapa').value='';
+  document.getElementById('h-valor-semapa').value='';
   document.getElementById('h-email').value='';
   toast('✅ Serviço registrado!');
 }
